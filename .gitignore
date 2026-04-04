@@ -1,0 +1,19 @@
+# Maven
+target/
+*.class
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+
+# AI
+.claude
+CLAUDE.md
+.worktrees/
+
+# Misc
+coding-agent.log

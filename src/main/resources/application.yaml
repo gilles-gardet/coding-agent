@@ -1,0 +1,14 @@
+logging:
+  level:
+    io.netty.resolver.dns.DnsServerAddressStreamProviders: OFF
+    root: OFF
+spring:
+  ai:
+    openai:
+      api-key: ${OPENAI_API_KEY}
+      chat.options.model: gpt-4o-mini
+  application:
+    name: coding-agent
+  main:
+    banner-mode: off
+    web-application-type: none
