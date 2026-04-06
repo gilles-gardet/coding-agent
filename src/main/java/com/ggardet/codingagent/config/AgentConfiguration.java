@@ -10,8 +10,11 @@ import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.ImportRuntimeHints;
+import reactor.core.scheduler.Schedulers;
 
 @Configuration
+@ImportRuntimeHints(AgentToolsRuntimeHints.class)
 public class AgentConfiguration {
     @Bean
     public ChatMemory chatMemory() {
@@ -33,7 +36,7 @@ public class AgentConfiguration {
                         ShellTools.builder().build()
                 )
                 .defaultAdvisors(
-                        MessageChatMemoryAdvisor.builder(chatMemory).build()
+                        MessageChatMemoryAdvisor.builder(chatMemory).scheduler(Schedulers.boundedElastic()).build()
                 )
                 .build();
     }
