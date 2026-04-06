@@ -8,11 +8,6 @@ import org.springframework.aot.hint.MemberCategory;
 import org.springframework.aot.hint.RuntimeHints;
 import org.springframework.aot.hint.RuntimeHintsRegistrar;
 
-/**
- * Registers GraalVM native image reflection hints for spring-ai-agent-utils tool classes.
- * Required because MethodToolCallbackProvider scans for @Tool annotated methods at runtime,
- * which requires reflection access to method annotations.
- */
 public class AgentToolsRuntimeHints implements RuntimeHintsRegistrar {
     @Override
     public void registerHints(final RuntimeHints hints, final ClassLoader classLoader) {

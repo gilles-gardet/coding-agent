@@ -1,0 +1,76 @@
+name: Release Native Binary
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version (ex: v1.0.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  create-release:
+    name: Create GitHub release
+    runs-on: ubuntu-latest
+
+    outputs:
+      tag: ${{ inputs.version }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Create release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create ${{ inputs.version }} \
+            --target main \
+            --title "${{ inputs.version }}" \
+            --generate-notes
+
+  build-native:
+    name: Build ${{ matrix.asset }}
+    runs-on: ${{ matrix.runner }}
+    needs: create-release
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            asset: coding-agent-linux-amd64
+          - runner: ubuntu-24.04-arm
+            asset: coding-agent-linux-arm64
+          - runner: macos-latest
+            asset: coding-agent-macos-arm64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Set up GraalVM
+        uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: '25'
+          distribution: 'graalvm-community'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build native image
+        run: mvn -Pnative native:compile -DskipTests --no-transfer-progress
+
+      - name: Upload binary to release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mv target/coding-agent target/${{ matrix.asset }}
+          gh release upload ${{ needs.create-release.outputs.tag }} \
+            target/${{ matrix.asset }} \
+            --clobber

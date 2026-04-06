@@ -14,7 +14,6 @@ import org.springframework.context.annotation.ImportRuntimeHints;
 import reactor.core.scheduler.Schedulers;
 
 @Configuration
-@ImportRuntimeHints(AgentToolsRuntimeHints.class)
 public class AgentConfiguration {
     @Bean
     public ChatMemory chatMemory() {
