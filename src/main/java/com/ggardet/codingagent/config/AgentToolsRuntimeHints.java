@@ -24,5 +24,6 @@ public class AgentToolsRuntimeHints implements RuntimeHintsRegistrar {
                 .registerType(ShellTools.class,
                         MemberCategory.INVOKE_PUBLIC_METHODS,
                         MemberCategory.INVOKE_DECLARED_METHODS);
+        hints.resources().registerPattern("dev/tamboui/tui/bindings/*.properties");
     }
 }

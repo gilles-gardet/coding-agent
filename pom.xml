@@ -20,8 +20,7 @@
         <java.version>25</java.version>
         <spring-ai.version>2.0.0-M4</spring-ai.version>
         <spring-ai-agent.version>0.4.2</spring-ai-agent.version>
-        <spring-shell.version>4.0.1</spring-shell.version>
-        <jline.version>4.0.10</jline.version>
+        <tamboui.version>0.2.0-SNAPSHOT</tamboui.version>
     </properties>
 
     <dependencyManagement>
@@ -34,9 +33,9 @@
                 <scope>import</scope>
             </dependency>
             <dependency>
-                <groupId>org.springframework.shell</groupId>
-                <artifactId>spring-shell-dependencies</artifactId>
-                <version>${spring-shell.version}</version>
+                <groupId>dev.tamboui</groupId>
+                <artifactId>tamboui-bom</artifactId>
+                <version>${tamboui.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -54,17 +53,17 @@
             <version>${spring-ai-agent.version}</version>
         </dependency>
         <dependency>
-            <groupId>org.springframework.shell</groupId>
-            <artifactId>spring-shell-starter</artifactId>
+            <groupId>dev.tamboui</groupId>
+            <artifactId>tamboui-toolkit</artifactId>
         </dependency>
         <dependency>
-            <groupId>org.springframework.shell</groupId>
-            <artifactId>spring-shell-jline</artifactId>
+            <groupId>dev.tamboui</groupId>
+            <artifactId>tamboui-jline3-backend</artifactId>
         </dependency>
         <dependency>
-            <groupId>org.jline</groupId>
-            <artifactId>jline</artifactId>
-            <version>${jline.version}</version>
+            <groupId>dev.tamboui</groupId>
+            <artifactId>tamboui-processor</artifactId>
+            <scope>provided</scope>
         </dependency>
     </dependencies>
 
@@ -73,6 +72,12 @@
             <id>spring-milestones</id>
             <name>Spring Milestones</name>
             <url>https://repo.spring.io/milestone</url>
+        </repository>
+        <repository>
+            <id>sonatype-snapshots</id>
+            <url>https://central.sonatype.com/repository/maven-snapshots/</url>
+            <snapshots><enabled>true</enabled></snapshots>
+            <releases><enabled>false</enabled></releases>
         </repository>
     </repositories>
 
@@ -88,6 +93,19 @@
             <plugin>
                 <groupId>org.graalvm.buildtools</groupId>
                 <artifactId>native-maven-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>dev.tamboui</groupId>
+                            <artifactId>tamboui-processor</artifactId>
+                            <version>${tamboui.version}</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
             </plugin>
         </plugins>
     </build>
