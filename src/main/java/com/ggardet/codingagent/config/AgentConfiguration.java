@@ -10,7 +10,6 @@ import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.ImportRuntimeHints;
 import reactor.core.scheduler.Schedulers;
 
 @Configuration
@@ -21,19 +20,35 @@ public class AgentConfiguration {
     }
 
     @Bean
-    public ChatClient chatClient(final ChatClient.Builder builder, final ChatMemory chatMemory) {
+    public FileSystemTools fileSystemTools() {
+        return FileSystemTools.builder().build();
+    }
+
+    @Bean
+    public GrepTool grepTool() {
+        return GrepTool.builder().build();
+    }
+
+    @Bean
+    public GlobTool globTool() {
+        return GlobTool.builder().build();
+    }
+
+    @Bean
+    public ShellTools shellTools() {
+        return ShellTools.builder().build();
+    }
+
+    @Bean
+    public ChatClient chatClient(
+            final ChatClient.Builder builder,
+            final ChatMemory chatMemory,
+            final FileSystemTools fileSystemTools,
+            final GrepTool grepTool,
+            final GlobTool globTool,
+            final ShellTools shellTools) {
         return builder
-                .defaultSystem("""
-                        You are a helpful coding assistant. You have access to tools \
-                        for reading files, searching code, running shell commands, \
-                        and editing files. Use them to help the user with their codebase.
-                        """)
-                .defaultTools(
-                        FileSystemTools.builder().build(),
-                        GrepTool.builder().build(),
-                        GlobTool.builder().build(),
-                        ShellTools.builder().build()
-                )
+                .defaultTools(fileSystemTools, grepTool, globTool, shellTools)
                 .defaultAdvisors(
                         MessageChatMemoryAdvisor.builder(chatMemory).scheduler(Schedulers.boundedElastic()).build()
                 )

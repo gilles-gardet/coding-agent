@@ -1,6 +1,8 @@
 package com.ggardet.codingagent.tui;
 
+import com.ggardet.codingagent.agent.ToolEventSink;
 import com.ggardet.codingagent.service.AgentService;
+import reactor.core.Disposable;
 import dev.tamboui.style.Overflow;
 import dev.tamboui.toolkit.app.ToolkitApp;
 import dev.tamboui.toolkit.element.Element;
@@ -16,6 +18,8 @@ import dev.tamboui.widgets.spinner.SpinnerStyle;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -32,8 +36,11 @@ public class CodingAgentTui extends ToolkitApp {
     private enum MessageType { USER, AGENT, SYSTEM }
     private record Message(MessageType type, String content) {}
     private final AgentService agentService;
+    private final ToolEventSink toolEventSink;
     private final TextInputState inputState = new TextInputState();
     private final CopyOnWriteArrayList<Message> messages = new CopyOnWriteArrayList<>();
+    private final CopyOnWriteArrayList<String> streamingLines = new CopyOnWriteArrayList<>();
+    private final StringBuilder streamingLineBuffer = new StringBuilder();
     private final ListElement<Message> historyList = new ListElement<>();
     private final SpinnerElement loadingSpinner = spinner(SpinnerStyle.DOTS, "Thinking...");
     private final TextInputElement inputField = textInput(inputState)
@@ -51,13 +58,16 @@ public class CodingAgentTui extends ToolkitApp {
                 }
                 return EventResult.UNHANDLED;
             });
-    private volatile boolean loading = false;
+    private volatile String currentStreamingLine = "";
+    private volatile boolean streaming = false;
+    private volatile Disposable toolEventSubscription;
 
     private static final int BOTTOM_HEIGHT = 6;
     private static final String HINTS = " Enter: send  Ctrl+L: clear  Ctrl+C: quit";
 
-    public CodingAgentTui(final AgentService agentService) {
+    public CodingAgentTui(final AgentService agentService, final ToolEventSink toolEventSink) {
         this.agentService = agentService;
+        this.toolEventSink = toolEventSink;
     }
 
     @Override
@@ -69,16 +79,25 @@ public class CodingAgentTui extends ToolkitApp {
 
     @Override
     protected Element render() {
-        historyList.data(List.copyOf(messages), msg -> {
+        final var displayMessages = new ArrayList<>(List.copyOf(messages));
+        if (streaming) {
+            for (final var line : List.copyOf(streamingLines)) {
+                displayMessages.add(new Message(MessageType.AGENT, line));
+            }
+            if (!currentStreamingLine.isEmpty()) {
+                displayMessages.add(new Message(MessageType.AGENT, currentStreamingLine + "▊"));
+            }
+        }
+        historyList.data(displayMessages, msg -> {
             final var prefix = msg.type() == MessageType.USER ? "> " : "  ";
             final var element = new TextElement(prefix + msg.content()).overflow(Overflow.WRAP_WORD);
             return switch (msg.type()) {
                 case USER -> element.green();
-                case AGENT -> element.cyan();
+                case AGENT -> element.white();
                 case SYSTEM -> element.dim();
             };
         });
-        final var activeInput = loading ? loadingSpinner : inputField;
+        final var activeInput = streaming ? loadingSpinner : inputField;
         final var bottom = panel(
                 column(activeInput, text(HINTS).dim()).spacing(0)
         ).borderless();
@@ -97,29 +116,81 @@ public class CodingAgentTui extends ToolkitApp {
 
     @Override
     protected void onStart() {
-        messages.add(new Message(MessageType.SYSTEM, "Coding Agent ready. Type a message below."));
+        final var content = "Coding Agent ready. Type a message below.";
+        final var message = new Message(MessageType.SYSTEM, content);
+        messages.add(message);
     }
 
     private void sendMessage() {
         final var message = inputState.text().trim();
-        if (message.isEmpty()) {
+        if (message.isEmpty() || streaming) {
             return;
         }
         inputState.clear();
         messages.add(new Message(MessageType.USER, message));
-        loading = true;
-        Thread.ofVirtual().start(() -> {
-            final var response = agentService.chat(message);
-            for (final var line : response.split("\n", -1)) {
-                messages.add(new Message(MessageType.AGENT, line));
-            }
-            loading = false;
-        });
+        streaming = true;
+        streamingLines.clear();
+        streamingLineBuffer.setLength(0);
+        currentStreamingLine = "";
+        toolEventSubscription = toolEventSink.events()
+                .subscribe(event -> messages.add(new Message(MessageType.SYSTEM, event)));
+        agentService.streamChat(message)
+                .doOnNext(this::handleStreamingToken)
+                .doOnComplete(this::finalizeStreaming)
+                .doOnError(this::handleStreamingError)
+                .subscribe();
+    }
+
+    private void handleStreamingToken(final String token) {
+        streamingLineBuffer.append(token);
+        final var content = streamingLineBuffer.toString();
+        final var lastNewline = content.lastIndexOf('\n');
+        if (lastNewline < 0) {
+            currentStreamingLine = content;
+            return;
+        }
+        final var lines = Arrays.asList(content.substring(0, lastNewline).split("\n", -1));
+        streamingLines.addAll(lines);
+        streamingLineBuffer.delete(0, lastNewline + 1);
+        currentStreamingLine = streamingLineBuffer.toString();
+    }
+
+    private void finalizeStreaming() {
+        disposeToolEventSubscription();
+        if (!streamingLineBuffer.isEmpty()) {
+            streamingLines.add(streamingLineBuffer.toString());
+        }
+        for (final var line : streamingLines) {
+            messages.add(new Message(MessageType.AGENT, line));
+        }
+        streamingLines.clear();
+        streamingLineBuffer.setLength(0);
+        currentStreamingLine = "";
+        streaming = false;
+    }
+
+    private void handleStreamingError(final Throwable error) {
+        disposeToolEventSubscription();
+        messages.add(new Message(MessageType.AGENT, "Error: " + error.getMessage()));
+        streamingLines.clear();
+        streamingLineBuffer.setLength(0);
+        currentStreamingLine = "";
+        streaming = false;
     }
 
     private void clearConversation() {
+        disposeToolEventSubscription();
         agentService.clearMemory();
         messages.clear();
+        streamingLines.clear();
+        streamingLineBuffer.setLength(0);
+        currentStreamingLine = "";
+        streaming = false;
+    }
+
+    private void disposeToolEventSubscription() {
+        if (toolEventSubscription != null && !toolEventSubscription.isDisposed()) {
+            toolEventSubscription.dispose();
+        }
     }
 }
-

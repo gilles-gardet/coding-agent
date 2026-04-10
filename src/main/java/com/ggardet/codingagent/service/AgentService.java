@@ -2,50 +2,45 @@ package com.ggardet.codingagent.service;
 
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.ai.chat.prompt.PromptTemplate;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Flux;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
 import java.util.Map;
 
 @Service
 public class AgentService {
     private final ChatClient chatClient;
     private final ChatMemory chatMemory;
-    private final List<String> history;
+    private final Resource systemPromptResource;
 
     public static final String CONVERSATION_ID = "default";
 
-    public AgentService(final ChatClient chatClient, final ChatMemory chatMemory) {
+    public AgentService(
+            final ChatClient chatClient,
+            final ChatMemory chatMemory,
+            final @Value("classpath:/prompts/system.st") Resource systemPromptResource) {
         this.chatClient = chatClient;
         this.chatMemory = chatMemory;
-        this.history = new ArrayList<>();
+        this.systemPromptResource = systemPromptResource;
     }
 
-    public String chat(final String message) {
-        try {
-            final var response = chatClient.prompt(message)
-                    .toolContext(Map.of("workingDir", System.getProperty("user.dir")))
-                    .call()
-                    .content();
-            if (response == null) {
-                return "Error: the model returned an empty response";
-            }
-            history.add("> " + message);
-            history.add("  " + response);
-            return response;
-        } catch (final Exception exception) {
-            return "Error: " + exception.getMessage();
-        }
+    public Flux<String> streamChat(final String message) {
+        return chatClient.prompt(message)
+                .system(buildSystemPrompt())
+                .toolContext(Map.of("workingDir", System.getProperty("user.dir")))
+                .stream()
+                .content();
     }
 
     public void clearMemory() {
         chatMemory.clear(CONVERSATION_ID);
-        history.clear();
     }
 
-    public List<String> getHistory() {
-        return Collections.unmodifiableList(history);
+    private String buildSystemPrompt() {
+        return new PromptTemplate(systemPromptResource)
+                .render(Map.of("workingDir", System.getProperty("user.dir")));
     }
 }
