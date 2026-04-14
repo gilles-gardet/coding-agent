@@ -19,7 +19,7 @@
     <properties>
         <java.version>25</java.version>
         <spring-ai.version>2.0.0-M4</spring-ai.version>
-        <spring-ai-agent.version>0.4.2</spring-ai-agent.version>
+        <spring-ai-agent-utils.version>0.7.0</spring-ai-agent-utils.version>
         <tamboui.version>0.2.0-SNAPSHOT</tamboui.version>
     </properties>
 
@@ -54,7 +54,7 @@
         <dependency>
             <groupId>org.springaicommunity</groupId>
             <artifactId>spring-ai-agent-utils</artifactId>
-            <version>${spring-ai-agent.version}</version>
+            <version>${spring-ai-agent-utils.version}</version>
         </dependency>
         <dependency>
             <groupId>dev.tamboui</groupId>
