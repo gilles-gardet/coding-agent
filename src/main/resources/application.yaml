@@ -7,6 +7,8 @@ spring:
     openai:
       api-key: ${OPENAI_API_KEY}
       chat.options.model: gpt-4o-mini
+    session:
+      repository.jdbc.initialize-schema: always
   application:
     name: coding-agent
   main:

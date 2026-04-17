@@ -6,24 +6,47 @@ import org.springaicommunity.agent.tools.GlobTool;
 import org.springaicommunity.agent.tools.GrepTool;
 import org.springaicommunity.agent.tools.ShellTools;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.client.advisor.ToolCallAdvisor;
-import org.springframework.ai.chat.memory.ChatMemory;
-import org.springframework.ai.chat.memory.MessageWindowChatMemory;
+import org.springframework.ai.session.DefaultSessionService;
+import org.springframework.ai.session.InMemorySessionRepository;
+import org.springframework.ai.session.SessionService;
+import org.springframework.ai.session.advisor.SessionMemoryAdvisor;
+import org.springframework.ai.session.compaction.CompactionStrategy;
+import org.springframework.ai.session.compaction.RecursiveSummarizationCompactionStrategy;
+import org.springframework.ai.session.compaction.TurnCountTrigger;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import reactor.core.scheduler.Schedulers;
-
-import java.time.Instant;
-import java.util.concurrent.atomic.AtomicReference;
 
 @Configuration
 public class AgentConfiguration {
-    private static final String MEMORY_DIR = "/home/gilles/.agent/memories";
+    private static final String MEMORY_DIR_MAC = "/Users/gilles/.agent/memories";
+    private static final String MEMORY_DIR_LINUX = "/home/gilles/.agent/memories";
+    private static final String OS_NAME_LINUX = "Linux";
+    private static final String OS_NAME = "os.name";
 
     @Bean
-    public ChatMemory chatMemory() {
-        return MessageWindowChatMemory.builder().maxMessages(50).build();
+    public SessionService sessionService() {
+        final var inMemorySessionRepository = InMemorySessionRepository.builder().build();
+        return DefaultSessionService.builder().sessionRepository(inMemorySessionRepository).build();
+    }
+
+    @Bean
+    public CompactionStrategy compactionStrategy(final ChatClient.Builder chatClientBuilder) {
+        final var chatClient = chatClientBuilder.build();
+        return RecursiveSummarizationCompactionStrategy.builder(chatClient).maxEventsToKeep(20).build();
+    }
+
+    @Bean
+    public SessionMemoryAdvisor sessionMemoryAdvisor(
+            final SessionService sessionService,
+            final CompactionStrategy compactionStrategy
+    ) {
+        final var turnCountTrigger = new TurnCountTrigger(10);
+        return SessionMemoryAdvisor.builder(sessionService)
+                .defaultUserId("gilles")
+                .compactionTrigger(turnCountTrigger)
+                .compactionStrategy(compactionStrategy)
+                .build();
     }
 
     @Bean
@@ -49,27 +72,26 @@ public class AgentConfiguration {
     @Bean
     public ChatClient chatClient(
             final ChatClient.Builder builder,
-            final ChatMemory chatMemory,
+            final SessionMemoryAdvisor sessionMemoryAdvisor,
             final FileSystemTools fileSystemTools,
             final GrepTool grepTool,
             final GlobTool globTool,
             final ShellTools shellTools) {
-        final AtomicReference<Instant> lastInteraction = new AtomicReference<>(Instant.now());
+        final var osName = System.getProperty(OS_NAME);
+        final var memoriesRootDirectory = osName.contains(OS_NAME_LINUX) ?
+                MEMORY_DIR_LINUX :
+                MEMORY_DIR_MAC;
         final var autoMemoryToolsAdvisor = AutoMemoryToolsAdvisor.builder()
-                .memoriesRootDirectory(MEMORY_DIR)
+                .memoriesRootDirectory(memoriesRootDirectory)
                 .memoryConsolidationTrigger((_, _) -> Math.random() < 0.05)
                 .build();
-        final var messageWindowChatMemory = MessageWindowChatMemory.builder().maxMessages(100).build();
-        final var messageChatMemoryAdvisor = MessageChatMemoryAdvisor.builder(messageWindowChatMemory).build();
+        final var toolCallAdvisor = ToolCallAdvisor.builder().disableInternalConversationHistory().build();
         return builder
                 .defaultTools(fileSystemTools, grepTool, globTool, shellTools)
                 .defaultAdvisors(
+                        sessionMemoryAdvisor,
                         autoMemoryToolsAdvisor,
-                        messageChatMemoryAdvisor,
-                        ToolCallAdvisor.builder().disableInternalConversationHistory().build())
-                .defaultAdvisors(
-                        MessageChatMemoryAdvisor.builder(chatMemory).scheduler(Schedulers.boundedElastic()).build()
-                )
+                        toolCallAdvisor)
                 .build();
     }
 }

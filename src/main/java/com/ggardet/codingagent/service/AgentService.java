@@ -3,6 +3,7 @@ package com.ggardet.codingagent.service;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.prompt.PromptTemplate;
+import org.springframework.ai.session.advisor.SessionMemoryAdvisor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
@@ -30,6 +31,7 @@ public class AgentService {
     public Flux<String> streamChat(final String message) {
         return chatClient.prompt(message)
                 .system(buildSystemPrompt())
+                .advisors(advisorSpec -> advisorSpec.param(SessionMemoryAdvisor.SESSION_ID_CONTEXT_KEY, "session-abc"))
                 .toolContext(Map.of("workingDir", System.getProperty("user.dir")))
                 .stream()
                 .content();
