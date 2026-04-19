@@ -28,7 +28,7 @@ public class MaxIterationsToolCallAdvisor extends ToolCallAdvisor {
     public MaxIterationsToolCallAdvisor(
             final ToolCallingManager toolCallingManager,
             final @Value("${coding-agent.max-iterations:10}") int maxIterations) {
-        super(toolCallingManager, Ordered.LOWEST_PRECEDENCE - 1, false);
+        super(toolCallingManager, Ordered.LOWEST_PRECEDENCE - 1, true);
         this.maxIterations = maxIterations;
     }
 

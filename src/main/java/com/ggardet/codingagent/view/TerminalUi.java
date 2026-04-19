@@ -27,6 +27,7 @@ import static dev.tamboui.toolkit.Toolkit.column;
 import static dev.tamboui.toolkit.Toolkit.dock;
 import static dev.tamboui.toolkit.Toolkit.length;
 import static dev.tamboui.toolkit.Toolkit.panel;
+import static dev.tamboui.toolkit.Toolkit.row;
 import static dev.tamboui.toolkit.Toolkit.spinner;
 import static dev.tamboui.toolkit.Toolkit.text;
 import static dev.tamboui.toolkit.Toolkit.textInput;
@@ -43,6 +44,11 @@ public class TerminalUi extends ToolkitApp {
     private final StringBuilder streamingLineBuffer = new StringBuilder();
     private final ListElement<Message> historyList = new ListElement<>();
     private final SpinnerElement loadingSpinner = spinner(SpinnerStyle.DOTS, "Thinking...");
+    private volatile String currentStreamingLine = "";
+    private volatile boolean streaming = false;
+    private volatile boolean ctrlCPressedOnce = false;
+    private volatile long ctrlCFirstPressTime = 0;
+    private volatile Disposable toolEventSubscription;
     private final TextInputElement inputField = textInput(inputState)
             .placeholder("Type a message and press Enter...")
             .focusable()
@@ -58,12 +64,9 @@ public class TerminalUi extends ToolkitApp {
                 }
                 return EventResult.UNHANDLED;
             });
-    private volatile String currentStreamingLine = "";
-    private volatile boolean streaming = false;
-    private volatile Disposable toolEventSubscription;
 
     private static final int BOTTOM_HEIGHT = 6;
-    private static final String HINTS = " Enter: send  Ctrl+L: clear  Ctrl+C: quit";
+    private static final String HINTS = " Enter: send  Ctrl+C: clear/quit  Ctrl+L: clear  Ctrl+P: toggle plan mode";
 
     public TerminalUi(final AgentService agentService, final ToolEventSink toolEventSink) {
         this.agentService = agentService;
@@ -98,16 +101,34 @@ public class TerminalUi extends ToolkitApp {
             };
         });
         final var activeInput = streaming ? loadingSpinner : inputField;
+        final var modeLabel = agentService.isPlanMode() ? text(" [PLAN MODE]").yellow() : text(" [EXECUTE MODE]").green();
+        final var hintsText = text(HINTS).dim();
         final var bottom = panel(
-                column(activeInput, text(HINTS).dim()).spacing(0)
+                column(activeInput, row(hintsText, modeLabel)).spacing(0)
         ).borderless();
         return dock()
                 .center(historyList.displayOnly().stickyScroll().scrollbar())
                 .bottom(bottom, length(BOTTOM_HEIGHT))
                 .focusable()
                 .onKeyEvent(event -> {
+                    if (event.hasCtrl() && event.isChar('c')) {
+                        final var now = System.currentTimeMillis();
+                        if (ctrlCPressedOnce && now - ctrlCFirstPressTime <= 2000) {
+                            quit();
+                        } else {
+                            ctrlCPressedOnce = true;
+                            ctrlCFirstPressTime = now;
+                            inputState.clear();
+                        }
+                        return EventResult.HANDLED;
+                    }
+                    ctrlCPressedOnce = false;
                     if (event.hasCtrl() && event.isChar('l')) {
                         clearConversation();
+                        return EventResult.HANDLED;
+                    }
+                    if (event.hasCtrl() && event.isChar('p')) {
+                        togglePlanMode();
                         return EventResult.HANDLED;
                     }
                     return historyList.handleKeyEvent(event, false);
@@ -128,6 +149,10 @@ public class TerminalUi extends ToolkitApp {
         }
         inputState.clear();
         messages.add(new Message(MessageType.USER, message));
+        startStreaming(message);
+    }
+
+    private void startStreaming(final String message) {
         streaming = true;
         streamingLines.clear();
         streamingLineBuffer.setLength(0);
@@ -139,6 +164,12 @@ public class TerminalUi extends ToolkitApp {
                 .doOnComplete(this::finalizeStreaming)
                 .doOnError(this::handleStreamingError)
                 .subscribe();
+    }
+
+    private void implementPlan() {
+        agentService.activateExecutionAfterPlan();
+        messages.add(new Message(MessageType.SYSTEM, "Switched to EXECUTE MODE — implementing the plan..."));
+        startStreaming("Implement every step of the plan you just described. Use all necessary tools to actually modify files, run commands, and make all required changes. Do not restate the plan — execute it now.");
     }
 
     private void handleStreamingToken(final String token) {
@@ -167,15 +198,38 @@ public class TerminalUi extends ToolkitApp {
         streamingLineBuffer.setLength(0);
         currentStreamingLine = "";
         streaming = false;
+        if (agentService.isPlanMode()) {
+            implementPlan();
+        }
     }
 
     private void handleStreamingError(final Throwable error) {
         disposeToolEventSubscription();
-        messages.add(new Message(MessageType.AGENT, "Error: " + error.getMessage()));
+        final var detail = extractErrorDetail(error);
+        messages.add(new Message(MessageType.AGENT, "Error: " + detail));
         streamingLines.clear();
         streamingLineBuffer.setLength(0);
         currentStreamingLine = "";
         streaming = false;
+    }
+
+    private String extractErrorDetail(final Throwable error) {
+        var cause = error;
+        while (cause != null) {
+            if (cause instanceof org.springframework.web.reactive.function.client.WebClientResponseException webEx) {
+                return webEx.getStatusCode() + " — " + webEx.getResponseBodyAsString();
+            }
+            cause = cause.getCause();
+        }
+        return error.getMessage();
+    }
+
+    private void togglePlanMode() {
+        final var newMode = agentService.togglePlanMode();
+        final var modeMessage = newMode
+                ? "Switched to PLAN MODE — agent will plan without executing actions"
+                : "Switched to EXECUTE MODE — agent will execute actions normally";
+        messages.add(new Message(MessageType.SYSTEM, modeMessage));
     }
 
     private void clearConversation() {

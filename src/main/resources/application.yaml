@@ -1,4 +1,7 @@
-logging.file.name: coding-agent.log
+logging:
+  file.name: coding-agent.log
+  level:
+    org.springframework.ai: DEBUG
 coding-agent:
   max-iterations: 10
 spring:
@@ -7,6 +10,15 @@ spring:
       api-key: ${OPENAI_API_KEY}
       chat.options.model: gpt-4o-mini
     session.repository.jdbc.initialize-schema: always
+    chat:
+      client.observations:
+        log-prompt: true
+        log-completion: true
+      observations:
+        log-prompt: true
+        log-completion: true
+        include-error-logging: true
+    tools.observations.include-content: true
   application.name: coding-agent
   main:
     banner-mode: off
