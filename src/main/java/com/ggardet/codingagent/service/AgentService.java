@@ -10,35 +10,36 @@ import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
 import java.util.Map;
+import java.util.UUID;
 
 @Service
 public class AgentService {
+    private final Resource systemPromptResource;
     private final ChatClient chatClient;
     private final ChatMemory chatMemory;
-    private final Resource systemPromptResource;
 
-    public static final String CONVERSATION_ID = "default";
+    private final String sessionId = UUID.randomUUID().toString();
 
     public AgentService(
+            final @Value("classpath:/prompts/system.st") Resource systemPromptResource,
             final ChatClient chatClient,
-            final ChatMemory chatMemory,
-            final @Value("classpath:/prompts/system.st") Resource systemPromptResource) {
+            final ChatMemory chatMemory) {
+        this.systemPromptResource = systemPromptResource;
         this.chatClient = chatClient;
         this.chatMemory = chatMemory;
-        this.systemPromptResource = systemPromptResource;
     }
 
     public Flux<String> streamChat(final String message) {
         return chatClient.prompt(message)
                 .system(buildSystemPrompt())
-                .advisors(advisorSpec -> advisorSpec.param(SessionMemoryAdvisor.SESSION_ID_CONTEXT_KEY, "session-abc"))
+                .advisors(advisorSpec -> advisorSpec.param(SessionMemoryAdvisor.SESSION_ID_CONTEXT_KEY, sessionId))
                 .toolContext(Map.of("workingDir", System.getProperty("user.dir")))
                 .stream()
                 .content();
     }
 
     public void clearMemory() {
-        chatMemory.clear(CONVERSATION_ID);
+        chatMemory.clear(sessionId);
     }
 
     private String buildSystemPrompt() {

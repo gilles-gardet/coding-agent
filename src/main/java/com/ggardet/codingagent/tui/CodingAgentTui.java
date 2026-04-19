@@ -1,6 +1,6 @@
 package com.ggardet.codingagent.tui;
 
-import com.ggardet.codingagent.agent.ToolEventSink;
+import com.ggardet.codingagent.observability.ToolEventSink;
 import com.ggardet.codingagent.service.AgentService;
 import reactor.core.Disposable;
 import dev.tamboui.style.Overflow;

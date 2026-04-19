@@ -1,4 +1,4 @@
-package com.ggardet.codingagent.agent;
+package com.ggardet.codingagent.observability;
 
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;

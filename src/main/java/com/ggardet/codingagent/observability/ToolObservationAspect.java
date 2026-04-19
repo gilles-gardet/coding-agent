@@ -1,4 +1,4 @@
-package com.ggardet.codingagent.agent;
+package com.ggardet.codingagent.observability;
 
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
@@ -28,14 +28,14 @@ public class ToolObservationAspect {
         final var args = Arrays.stream(joinPoint.getArgs())
                 .map(Object::toString)
                 .collect(Collectors.joining(", "));
-        toolEventSink.emit("🔧 [" + toolName + "] " + truncate(args, MAX_ARG_LENGTH));
+        toolEventSink.emit("🔧 [" + toolName + "] " + truncate(args));
         return joinPoint.proceed();
     }
 
-    private static String truncate(final String text, final int maxLength) {
-        if (text.length() <= maxLength) {
+    private static String truncate(final String text) {
+        if (text.length() <= ToolObservationAspect.MAX_ARG_LENGTH) {
             return text;
         }
-        return text.substring(0, maxLength) + "…";
+        return text.substring(0, ToolObservationAspect.MAX_ARG_LENGTH) + "…";
     }
 }

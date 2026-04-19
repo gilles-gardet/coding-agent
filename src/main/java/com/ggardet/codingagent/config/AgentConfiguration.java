@@ -14,8 +14,11 @@ import org.springframework.ai.session.advisor.SessionMemoryAdvisor;
 import org.springframework.ai.session.compaction.CompactionStrategy;
 import org.springframework.ai.session.compaction.RecursiveSummarizationCompactionStrategy;
 import org.springframework.ai.session.compaction.TurnCountTrigger;
+import org.springframework.ai.tool.ToolCallback;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+
+import java.util.List;
 
 @Configuration
 public class AgentConfiguration {
@@ -50,33 +53,10 @@ public class AgentConfiguration {
     }
 
     @Bean
-    public FileSystemTools fileSystemTools() {
-        return FileSystemTools.builder().build();
-    }
-
-    @Bean
-    public GrepTool grepTool() {
-        return GrepTool.builder().build();
-    }
-
-    @Bean
-    public GlobTool globTool() {
-        return GlobTool.builder().build();
-    }
-
-    @Bean
-    public ShellTools shellTools() {
-        return ShellTools.builder().build();
-    }
-
-    @Bean
     public ChatClient chatClient(
             final ChatClient.Builder builder,
             final SessionMemoryAdvisor sessionMemoryAdvisor,
-            final FileSystemTools fileSystemTools,
-            final GrepTool grepTool,
-            final GlobTool globTool,
-            final ShellTools shellTools) {
+            final ToolCallback[] agentTools) {
         final var osName = System.getProperty(OS_NAME);
         final var memoriesRootDirectory = osName.contains(OS_NAME_LINUX) ?
                 MEMORY_DIR_LINUX :
@@ -87,7 +67,7 @@ public class AgentConfiguration {
                 .build();
         final var toolCallAdvisor = ToolCallAdvisor.builder().disableInternalConversationHistory().build();
         return builder
-                .defaultTools(fileSystemTools, grepTool, globTool, shellTools)
+                .defaultToolCallbacks(agentTools)
                 .defaultAdvisors(
                         sessionMemoryAdvisor,
                         autoMemoryToolsAdvisor,

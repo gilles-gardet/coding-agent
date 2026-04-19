@@ -1,4 +1,4 @@
-package com.ggardet.codingagent.config;
+package com.ggardet.codingagent.hints;
 
 import org.springaicommunity.agent.tools.FileSystemTools;
 import org.springaicommunity.agent.tools.GlobTool;
@@ -8,7 +8,7 @@ import org.springframework.aot.hint.MemberCategory;
 import org.springframework.aot.hint.RuntimeHints;
 import org.springframework.aot.hint.RuntimeHintsRegistrar;
 
-public class AgentToolsRuntimeHints implements RuntimeHintsRegistrar {
+public class NativeRuntimeHints implements RuntimeHintsRegistrar {
     @Override
     public void registerHints(final RuntimeHints hints, final ClassLoader classLoader) {
         hints.reflection()

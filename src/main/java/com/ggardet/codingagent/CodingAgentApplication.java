@@ -1,6 +1,6 @@
 package com.ggardet.codingagent;
 
-import com.ggardet.codingagent.config.AgentToolsRuntimeHints;
+import com.ggardet.codingagent.hints.NativeRuntimeHints;
 import com.ggardet.codingagent.tui.CodingAgentTui;
 import org.jspecify.annotations.NonNull;
 import org.springframework.boot.ApplicationArguments;
@@ -9,7 +9,7 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.ImportRuntimeHints;
 
-@ImportRuntimeHints(AgentToolsRuntimeHints.class)
+@ImportRuntimeHints(NativeRuntimeHints.class)
 @SpringBootApplication
 public class CodingAgentApplication implements ApplicationRunner {
     private final CodingAgentTui codingAgentTui;
