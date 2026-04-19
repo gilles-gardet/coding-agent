@@ -1,4 +1,4 @@
-package com.ggardet.codingagent.observability;
+package com.ggardet.codingagent.logging;
 
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;

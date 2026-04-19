@@ -1,6 +1,6 @@
-package com.ggardet.codingagent.tui;
+package com.ggardet.codingagent.view;
 
-import com.ggardet.codingagent.observability.ToolEventSink;
+import com.ggardet.codingagent.logging.ToolEventSink;
 import com.ggardet.codingagent.service.AgentService;
 import reactor.core.Disposable;
 import dev.tamboui.style.Overflow;
@@ -32,7 +32,7 @@ import static dev.tamboui.toolkit.Toolkit.text;
 import static dev.tamboui.toolkit.Toolkit.textInput;
 
 @Component
-public class CodingAgentTui extends ToolkitApp {
+public class TerminalUi extends ToolkitApp {
     private enum MessageType { USER, AGENT, SYSTEM }
     private record Message(MessageType type, String content) {}
     private final AgentService agentService;
@@ -65,7 +65,7 @@ public class CodingAgentTui extends ToolkitApp {
     private static final int BOTTOM_HEIGHT = 6;
     private static final String HINTS = " Enter: send  Ctrl+L: clear  Ctrl+C: quit";
 
-    public CodingAgentTui(final AgentService agentService, final ToolEventSink toolEventSink) {
+    public TerminalUi(final AgentService agentService, final ToolEventSink toolEventSink) {
         this.agentService = agentService;
         this.toolEventSink = toolEventSink;
     }

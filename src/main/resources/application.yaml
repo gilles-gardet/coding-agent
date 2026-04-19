@@ -1,14 +1,11 @@
-logging:
-  file.name: coding-agent.log
+logging.file.name: coding-agent.log
 spring:
   ai:
     openai:
       api-key: ${OPENAI_API_KEY}
       chat.options.model: gpt-4o-mini
-    session:
-      repository.jdbc.initialize-schema: always
-  application:
-    name: coding-agent
+    session.repository.jdbc.initialize-schema: always
+  application.name: coding-agent
   main:
     banner-mode: off
     web-application-type: none

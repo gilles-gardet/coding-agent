@@ -19,6 +19,7 @@ public class AgentService {
     private final ChatMemory chatMemory;
 
     private final String sessionId = UUID.randomUUID().toString();
+    private final Map<String, Object> workingDirContext = Map.of("workingDir", System.getProperty("user.dir"));
 
     public AgentService(
             final @Value("classpath:/prompts/system.st") Resource systemPromptResource,
@@ -33,7 +34,7 @@ public class AgentService {
         return chatClient.prompt(message)
                 .system(buildSystemPrompt())
                 .advisors(advisorSpec -> advisorSpec.param(SessionMemoryAdvisor.SESSION_ID_CONTEXT_KEY, sessionId))
-                .toolContext(Map.of("workingDir", System.getProperty("user.dir")))
+                .toolContext(workingDirContext)
                 .stream()
                 .content();
     }
@@ -43,7 +44,6 @@ public class AgentService {
     }
 
     private String buildSystemPrompt() {
-        return new PromptTemplate(systemPromptResource)
-                .render(Map.of("workingDir", System.getProperty("user.dir")));
+        return new PromptTemplate(systemPromptResource).render(workingDirContext);
     }
 }
