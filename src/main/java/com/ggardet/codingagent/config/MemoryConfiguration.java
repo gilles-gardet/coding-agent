@@ -1,12 +1,7 @@
 package com.ggardet.codingagent.config;
 
 import org.springaicommunity.agent.advisors.AutoMemoryToolsAdvisor;
-import org.springaicommunity.agent.tools.FileSystemTools;
-import org.springaicommunity.agent.tools.GlobTool;
-import org.springaicommunity.agent.tools.GrepTool;
-import org.springaicommunity.agent.tools.ShellTools;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.client.advisor.ToolCallAdvisor;
 import org.springframework.ai.session.DefaultSessionService;
 import org.springframework.ai.session.InMemorySessionRepository;
 import org.springframework.ai.session.SessionService;
@@ -14,18 +9,16 @@ import org.springframework.ai.session.advisor.SessionMemoryAdvisor;
 import org.springframework.ai.session.compaction.CompactionStrategy;
 import org.springframework.ai.session.compaction.RecursiveSummarizationCompactionStrategy;
 import org.springframework.ai.session.compaction.TurnCountTrigger;
-import org.springframework.ai.tool.ToolCallback;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-import java.util.List;
-
 @Configuration
-public class AgentConfiguration {
+public class MemoryConfiguration {
     private static final String MEMORY_DIR_MAC = "/Users/gilles/.agent/memories";
     private static final String MEMORY_DIR_LINUX = "/home/gilles/.agent/memories";
     private static final String OS_NAME_LINUX = "Linux";
     private static final String OS_NAME = "os.name";
+    private static final String DEFAULT_USER_ID = "gilles";
 
     @Bean
     public SessionService sessionService() {
@@ -44,34 +37,23 @@ public class AgentConfiguration {
             final SessionService sessionService,
             final CompactionStrategy compactionStrategy
     ) {
-        final var turnCountTrigger = new TurnCountTrigger(10);
+        final var turnCountTrigger = new TurnCountTrigger(20);
         return SessionMemoryAdvisor.builder(sessionService)
-                .defaultUserId("gilles")
+                .defaultUserId(DEFAULT_USER_ID)
                 .compactionTrigger(turnCountTrigger)
                 .compactionStrategy(compactionStrategy)
                 .build();
     }
 
     @Bean
-    public ChatClient chatClient(
-            final ChatClient.Builder builder,
-            final SessionMemoryAdvisor sessionMemoryAdvisor,
-            final ToolCallback[] agentTools) {
+    public AutoMemoryToolsAdvisor autoMemoryToolsAdvisor() {
         final var osName = System.getProperty(OS_NAME);
         final var memoriesRootDirectory = osName.contains(OS_NAME_LINUX) ?
                 MEMORY_DIR_LINUX :
                 MEMORY_DIR_MAC;
-        final var autoMemoryToolsAdvisor = AutoMemoryToolsAdvisor.builder()
+        return AutoMemoryToolsAdvisor.builder()
                 .memoriesRootDirectory(memoriesRootDirectory)
                 .memoryConsolidationTrigger((_, _) -> Math.random() < 0.05)
-                .build();
-        final var toolCallAdvisor = ToolCallAdvisor.builder().disableInternalConversationHistory().build();
-        return builder
-                .defaultToolCallbacks(agentTools)
-                .defaultAdvisors(
-                        sessionMemoryAdvisor,
-                        autoMemoryToolsAdvisor,
-                        toolCallAdvisor)
                 .build();
     }
 }

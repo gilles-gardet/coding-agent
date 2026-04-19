@@ -10,7 +10,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
-public class AgentToolsConfiguration {
+public class ToolsConfiguration {
     @Bean
     public FileSystemTools fileSystemTools() {
         return FileSystemTools.builder().build();
