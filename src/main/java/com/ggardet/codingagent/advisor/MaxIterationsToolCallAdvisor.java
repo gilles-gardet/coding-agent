@@ -20,14 +20,15 @@ public class MaxIterationsToolCallAdvisor extends ToolCallAdvisor {
 
     private final ThreadLocal<Integer> iterationCount = ThreadLocal.withInitial(() -> 0);
     private static final String STOP_MESSAGE = """
-            You have reached the maximum allowed number of tool call iterations. \
-            Please provide your final answer now based on the information gathered so far, \
-            without calling any more tools.""";
+            You have reached the maximum allowed number of tool call iterations. 
+            Please provide your final answer now based on the information gathered so far, 
+            without calling any more tools.
+            """;
 
     public MaxIterationsToolCallAdvisor(
             final ToolCallingManager toolCallingManager,
             final @Value("${coding-agent.max-iterations:10}") int maxIterations) {
-        super(toolCallingManager, Ordered.LOWEST_PRECEDENCE, false);
+        super(toolCallingManager, Ordered.LOWEST_PRECEDENCE - 1, false);
         this.maxIterations = maxIterations;
     }
 

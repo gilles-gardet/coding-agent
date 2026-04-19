@@ -41,11 +41,6 @@ public class ToolConfiguration {
     }
 
     @Bean
-    public SmartWebFetchTool smartWebFetchTool(final ChatClient.Builder chatClientBuilder) {
-        return SmartWebFetchTool.builder(chatClientBuilder.build()).build();
-    }
-
-    @Bean
     public TavilyWebSearchTool tavilyWebSearchTool(final @Value("${TAVILY_API_KEY}") String tavilyApiKey) {
         return TavilyWebSearchTool.builder(tavilyApiKey).build();
     }
@@ -64,9 +59,10 @@ public class ToolConfiguration {
             final GlobTool globTool,
             final ShellTools shellTools,
             final TavilyWebSearchTool tavilyWebSearchTool,
-            final SmartWebFetchTool smartWebFetchTool,
+            final ChatClient.Builder chatClientBuilder,
             final ToolCallback skillsTool
     ) {
+        final var smartWebFetchTool = SmartWebFetchTool.builder(chatClientBuilder.build()).build();
         final var baseTools = ToolCallbacks.from(
                 fileSystemTools,
                 grepTool,

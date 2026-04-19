@@ -27,7 +27,7 @@ public class TavilyWebSearchTool {
     private static final String TAVILY_API_BASE_URL = "https://api.tavily.com";
     private static final String SEARCH_PATH = "/search";
 
-    private TavilyWebSearchTool(final String apiKey, final int maxResults) {
+    public TavilyWebSearchTool(final String apiKey, final int maxResults) {
         Assert.hasText(apiKey, "API key must not be null or empty");
         this.apiKey = apiKey;
         this.maxResults = maxResults;
