@@ -49,6 +49,7 @@ public class ToolConfiguration {
     public ToolCallback skillsTool() {
         return SkillsTool.builder()
                 .addSkillsResource(new ClassPathResource(".agent/skills"))
+                .addSkillsResource(new ClassPathResource("META-INF/skills"))
                 .build();
     }
 
