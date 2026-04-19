@@ -1,5 +1,6 @@
 package com.ggardet.codingagent.view;
 
+import com.ggardet.codingagent.history.InputHistory;
 import com.ggardet.codingagent.logging.ToolEventSink;
 import com.ggardet.codingagent.service.AgentService;
 import reactor.core.Disposable;
@@ -38,6 +39,7 @@ public class TerminalUi extends ToolkitApp {
     private record Message(MessageType type, String content) {}
     private final AgentService agentService;
     private final ToolEventSink toolEventSink;
+    private final InputHistory inputHistory;
     private final TextInputState inputState = new TextInputState();
     private final CopyOnWriteArrayList<Message> messages = new CopyOnWriteArrayList<>();
     private final CopyOnWriteArrayList<String> streamingLines = new CopyOnWriteArrayList<>();
@@ -49,28 +51,36 @@ public class TerminalUi extends ToolkitApp {
     private volatile boolean ctrlCPressedOnce = false;
     private volatile long ctrlCFirstPressTime = 0;
     private volatile Disposable toolEventSubscription;
-    private final TextInputElement inputField = textInput(inputState)
-            .placeholder("Type a message and press Enter...")
-            .focusable()
-            .rounded()
-            .onSubmit(this::sendMessage)
-            .onKeyEvent(event -> {
-                if (event.code() == KeyCode.CHAR && !event.hasCtrl() && !event.hasAlt()) {
-                    final var c = event.character();
-                    if (c > 127) {
-                        inputState.insert(c);
-                        return EventResult.HANDLED;
-                    }
-                }
-                return EventResult.UNHANDLED;
-            });
+    private final TextInputElement inputField;
 
     private static final int BOTTOM_HEIGHT = 6;
     private static final String HINTS = " Enter: send  Ctrl+C: clear/quit  Ctrl+L: clear  Ctrl+P: toggle plan mode";
 
-    public TerminalUi(final AgentService agentService, final ToolEventSink toolEventSink) {
+    public TerminalUi(final AgentService agentService, final ToolEventSink toolEventSink, final InputHistory inputHistory) {
         this.agentService = agentService;
         this.toolEventSink = toolEventSink;
+        this.inputHistory = inputHistory;
+        this.inputField = textInput(inputState)
+                .placeholder("Type a message and press Enter...")
+                .focusable()
+                .rounded()
+                .onSubmit(this::sendMessage)
+                .onKeyEvent(event -> {
+                    if (event.code() == KeyCode.UP && !event.hasCtrl() && !event.hasAlt()) {
+                        return navigateHistoryUp();
+                    }
+                    if (event.code() == KeyCode.DOWN && !event.hasCtrl() && !event.hasAlt()) {
+                        return navigateHistoryDown();
+                    }
+                    if (event.code() == KeyCode.CHAR && !event.hasCtrl() && !event.hasAlt()) {
+                        final var c = event.character();
+                        if (c > 127) {
+                            inputState.insert(c);
+                            return EventResult.HANDLED;
+                        }
+                    }
+                    return EventResult.UNHANDLED;
+                });
     }
 
     @Override
@@ -142,12 +152,27 @@ public class TerminalUi extends ToolkitApp {
         messages.add(message);
     }
 
+    private EventResult navigateHistoryUp() {
+        final var entry = inputHistory.navigateUp(inputState.text());
+        inputState.setText(entry);
+        inputState.moveCursorToEnd();
+        return EventResult.HANDLED;
+    }
+
+    private EventResult navigateHistoryDown() {
+        final var entry = inputHistory.navigateDown();
+        inputState.setText(entry);
+        inputState.moveCursorToEnd();
+        return EventResult.HANDLED;
+    }
+
     private void sendMessage() {
         final var message = inputState.text().trim();
         if (message.isEmpty() || streaming) {
             return;
         }
         inputState.clear();
+        inputHistory.add(message);
         messages.add(new Message(MessageType.USER, message));
         startStreaming(message);
     }
@@ -240,6 +265,7 @@ public class TerminalUi extends ToolkitApp {
         streamingLineBuffer.setLength(0);
         currentStreamingLine = "";
         streaming = false;
+        inputHistory.resetNavigation();
     }
 
     private void disposeToolEventSubscription() {
