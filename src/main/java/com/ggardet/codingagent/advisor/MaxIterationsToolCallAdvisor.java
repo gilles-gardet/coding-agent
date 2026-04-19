@@ -1,4 +1,4 @@
-package com.ggardet.codingagent.config;
+package com.ggardet.codingagent.advisor;
 
 import org.jspecify.annotations.NonNull;
 import org.springframework.ai.chat.client.ChatClientRequest;
@@ -8,9 +8,13 @@ import org.springframework.ai.chat.client.advisor.api.CallAdvisorChain;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.model.tool.ToolCallingManager;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.Ordered;
+import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 
+@Component
 public class MaxIterationsToolCallAdvisor extends ToolCallAdvisor {
     private final int maxIterations;
 
@@ -20,12 +24,10 @@ public class MaxIterationsToolCallAdvisor extends ToolCallAdvisor {
             Please provide your final answer now based on the information gathered so far, \
             without calling any more tools.""";
 
-    protected MaxIterationsToolCallAdvisor(
+    public MaxIterationsToolCallAdvisor(
             final ToolCallingManager toolCallingManager,
-            final int advisorOrder,
-            final boolean conversationHistoryEnabled,
-            final int maxIterations) {
-        super(toolCallingManager, advisorOrder, conversationHistoryEnabled);
+            final @Value("${coding-agent.max-iterations:10}") int maxIterations) {
+        super(toolCallingManager, Ordered.LOWEST_PRECEDENCE, false);
         this.maxIterations = maxIterations;
     }
 
@@ -68,29 +70,5 @@ public class MaxIterationsToolCallAdvisor extends ToolCallAdvisor {
                 .prompt(newPrompt)
                 .context(request.context())
                 .build();
-    }
-
-    public static Builder<?> builder() {
-        return new Builder<>();
-    }
-
-    public static class Builder<T extends Builder<T>> extends ToolCallAdvisor.Builder<T> {
-
-        private int maxIterations = 10;
-
-        public T maxIterations(final int maxIterations) {
-            this.maxIterations = maxIterations;
-            return self();
-        }
-
-        public @NonNull T disableInternalConversationHistory() {
-            return conversationHistoryEnabled(false);
-        }
-
-        @Override
-        public @NonNull MaxIterationsToolCallAdvisor build() {
-            return new MaxIterationsToolCallAdvisor(
-                    getToolCallingManager(), getAdvisorOrder(), false, maxIterations);
-        }
     }
 }

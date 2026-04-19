@@ -19,7 +19,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.ClassPathResource;
 
 @Configuration
-public class ToolsConfiguration {
+public class ToolConfiguration {
     @Bean
     public FileSystemTools fileSystemTools() {
         return FileSystemTools.builder().build();
