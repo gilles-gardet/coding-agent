@@ -3,7 +3,7 @@ package com.ggardet.codingagent.config;
 import java.util.Arrays;
 import java.util.stream.Stream;
 
-import org.springaicommunity.agent.tools.BraveWebSearchTool;
+import com.ggardet.codingagent.tools.TavilyWebSearchTool;
 import org.springaicommunity.agent.tools.FileSystemTools;
 import org.springaicommunity.agent.tools.GlobTool;
 import org.springaicommunity.agent.tools.GrepTool;
@@ -46,8 +46,8 @@ public class ToolsConfiguration {
     }
 
     @Bean
-    public BraveWebSearchTool braveWebSearchTool(final @Value("${BRAVE_API_KEY}") String braveApiKey) {
-        return BraveWebSearchTool.builder(braveApiKey).build();
+    public TavilyWebSearchTool tavilyWebSearchTool(final @Value("${TAVILY_API_KEY}") String tavilyApiKey) {
+        return TavilyWebSearchTool.builder(tavilyApiKey).build();
     }
 
     @Bean
@@ -63,7 +63,7 @@ public class ToolsConfiguration {
             final GrepTool grepTool,
             final GlobTool globTool,
             final ShellTools shellTools,
-            final BraveWebSearchTool braveWebSearchTool,
+            final TavilyWebSearchTool tavilyWebSearchTool,
             final SmartWebFetchTool smartWebFetchTool,
             final ToolCallback skillsTool
     ) {
@@ -72,7 +72,7 @@ public class ToolsConfiguration {
                 grepTool,
                 globTool,
                 shellTools,
-                braveWebSearchTool,
+                tavilyWebSearchTool,
                 smartWebFetchTool
         );
         return Stream.concat(Arrays.stream(baseTools), Stream.of(skillsTool))

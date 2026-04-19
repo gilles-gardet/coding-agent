@@ -1,4 +1,6 @@
 logging.file.name: coding-agent.log
+coding-agent:
+  max-iterations: 10
 spring:
   ai:
     openai:
