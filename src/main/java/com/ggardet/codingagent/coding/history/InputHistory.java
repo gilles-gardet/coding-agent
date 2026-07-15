@@ -1,5 +1,7 @@
 package com.ggardet.codingagent.coding.history;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -16,6 +18,7 @@ import java.util.List;
 @Component
 public class InputHistory {
     private static final Path HISTORY_FILE = Paths.get(System.getProperty("user.home"), ".coding-agent", "history");
+    private static final Logger log = LoggerFactory.getLogger(InputHistory.class);
     private final List<String> entries = new ArrayList<>();
     private int navigationIndex = -1;
     private String savedDraft = "";
@@ -92,7 +95,8 @@ public class InputHistory {
             Files.readAllLines(HISTORY_FILE).stream()
                     .filter(line -> !line.isBlank())
                     .forEach(entries::add);
-        } catch (final IOException ignored) {
+        } catch (final IOException ioException) {
+            log.error("Failed to read history file {}: {}", HISTORY_FILE, ioException.getMessage());
         }
     }
 
@@ -105,7 +109,8 @@ public class InputHistory {
             Files.createDirectories(HISTORY_FILE.getParent());
             Files.writeString(HISTORY_FILE, message + System.lineSeparator(),
                     StandardOpenOption.CREATE, StandardOpenOption.APPEND);
-        } catch (final IOException ignored) {
+        } catch (final IOException ioException) {
+            log.error("Failed to write history file {}: {}", HISTORY_FILE, ioException.getMessage());
         }
     }
 }

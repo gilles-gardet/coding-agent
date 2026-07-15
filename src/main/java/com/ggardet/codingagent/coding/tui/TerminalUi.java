@@ -1,5 +1,6 @@
 package com.ggardet.codingagent.coding.tui;
 
+import com.ggardet.codingagent.coding.approval.ApprovalRequest;
 import com.ggardet.codingagent.coding.approval.CommandApprovalService;
 import com.ggardet.codingagent.coding.command.SlashCommand;
 import com.ggardet.codingagent.coding.history.InputHistory;
@@ -16,6 +17,7 @@ import dev.tamboui.toolkit.elements.TextInputElement;
 import dev.tamboui.toolkit.event.EventResult;
 import dev.tamboui.tui.TuiConfig;
 import dev.tamboui.tui.event.KeyCode;
+import dev.tamboui.tui.event.KeyEvent;
 import dev.tamboui.widgets.input.TextInputState;
 import dev.tamboui.widgets.spinner.SpinnerStyle;
 import org.springframework.stereotype.Component;
@@ -27,6 +29,8 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static dev.tamboui.toolkit.Toolkit.column;
 import static dev.tamboui.toolkit.Toolkit.dock;
@@ -42,14 +46,6 @@ import static dev.tamboui.toolkit.Toolkit.textInput;
 /// (cancel, plan mode, clear, quit), and prompts for approval of destructive commands.
 @Component
 public class TerminalUi extends ToolkitApp {
-    /// The origin of a displayed message, used to style it.
-    private enum MessageType { USER, AGENT, SYSTEM }
-
-    /// A single line displayed in the conversation view.
-    ///
-    /// @param type the message origin
-    /// @param content the text to display
-    private record Message(MessageType type, String content) {}
     private final AgentService agentService;
     private final ToolEventSink toolEventSink;
     private final InputHistory inputHistory;
@@ -63,12 +59,12 @@ public class TerminalUi extends ToolkitApp {
     private volatile String currentStreamingLine = "";
     private volatile boolean streaming = false;
     private volatile boolean planReady = false;
-    private volatile int selectedSuggestion = 0;
+    private final AtomicInteger selectedSuggestion = new AtomicInteger(0);
     private volatile boolean ctrlCPressedOnce = false;
     private volatile long ctrlCFirstPressTime = 0;
-    private volatile Disposable toolEventSubscription;
-    private volatile Disposable streamSubscription;
-    private volatile CommandApprovalService.ApprovalRequest pendingApproval;
+    private final AtomicReference<Disposable> toolEventSubscription = new AtomicReference<>();
+    private final AtomicReference<Disposable> streamSubscription = new AtomicReference<>();
+    private final AtomicReference<ApprovalRequest> pendingApproval = new AtomicReference<>();
     private final TextInputElement inputField;
 
     private static final int BOTTOM_HEIGHT = 6;
@@ -91,36 +87,54 @@ public class TerminalUi extends ToolkitApp {
                 .focusable()
                 .rounded()
                 .onSubmit(this::sendMessage)
-                .onKeyEvent(event -> {
-                    final var suggestions = currentSuggestions();
-                    if (!suggestions.isEmpty() && !event.hasCtrl() && !event.hasAlt()) {
-                        if (event.code() == KeyCode.UP) {
-                            selectedSuggestion = Math.floorMod(selectedSuggestion - 1, suggestions.size());
-                            return EventResult.HANDLED;
-                        }
-                        if (event.code() == KeyCode.DOWN) {
-                            selectedSuggestion = Math.floorMod(selectedSuggestion + 1, suggestions.size());
-                            return EventResult.HANDLED;
-                        }
-                        if (event.code() == KeyCode.TAB) {
-                            return completeSuggestion(suggestions);
-                        }
-                    }
-                    if (event.code() == KeyCode.UP && !event.hasCtrl() && !event.hasAlt()) {
-                        return navigateHistoryUp();
-                    }
-                    if (event.code() == KeyCode.DOWN && !event.hasCtrl() && !event.hasAlt()) {
-                        return navigateHistoryDown();
-                    }
-                    if (event.code() == KeyCode.CHAR && !event.hasCtrl() && !event.hasAlt()) {
-                        final var c = event.character();
-                        if (c > 127) {
-                            inputState.insert(c);
-                            return EventResult.HANDLED;
-                        }
-                    }
-                    return EventResult.UNHANDLED;
-                });
+                .onKeyEvent(this::handleInputKeyEvent);
+    }
+
+    /// Handles a key event on the input field: navigates command suggestions (up/down/tab) when any
+    /// are shown, otherwise navigates input history (up/down) and inserts non-ASCII characters.
+    ///
+    /// @param event the key event to interpret
+    /// @return the result of handling the event
+    private EventResult handleInputKeyEvent(final KeyEvent event) {
+        if (event.hasCtrl() || event.hasAlt()) {
+            return EventResult.UNHANDLED;
+        }
+        final var suggestions = currentSuggestions();
+        if (!suggestions.isEmpty() && handleSuggestionKeyEvent(event, suggestions) == EventResult.HANDLED) {
+            return EventResult.HANDLED;
+        }
+        if (suggestions.isEmpty() && event.code() == KeyCode.UP) {
+            return navigateHistoryUp();
+        }
+        if (suggestions.isEmpty() && event.code() == KeyCode.DOWN) {
+            return navigateHistoryDown();
+        }
+        if (event.code() == KeyCode.CHAR && event.character() > 127) {
+            inputState.insert(event.character());
+            return EventResult.HANDLED;
+        }
+        return EventResult.UNHANDLED;
+    }
+
+    /// Navigates the visible command suggestions: up/down cycle the selection and tab completes the
+    /// highlighted suggestion.
+    ///
+    /// @param event the key event to interpret
+    /// @param suggestions the currently shown suggestions
+    /// @return the result of handling the event
+    private EventResult handleSuggestionKeyEvent(final KeyEvent event, final List<SlashCommand> suggestions) {
+        if (event.code() == KeyCode.UP) {
+            selectedSuggestion.updateAndGet(value -> Math.floorMod(value - 1, suggestions.size()));
+            return EventResult.HANDLED;
+        }
+        if (event.code() == KeyCode.DOWN) {
+            selectedSuggestion.updateAndGet(value -> Math.floorMod(value + 1, suggestions.size()));
+            return EventResult.HANDLED;
+        }
+        if (event.code() == KeyCode.TAB) {
+            return completeSuggestion(suggestions);
+        }
+        return EventResult.UNHANDLED;
     }
 
     /// Configures the TUI runtime, setting the render tick rate.
@@ -140,16 +154,7 @@ public class TerminalUi extends ToolkitApp {
     /// @return the root element to render
     @Override
     protected Element render() {
-        final var displayMessages = new ArrayList<>(List.copyOf(messages));
-        if (streaming) {
-            for (final var line : List.copyOf(streamingLines)) {
-                displayMessages.add(new Message(MessageType.AGENT, line));
-            }
-            if (!currentStreamingLine.isEmpty()) {
-                displayMessages.add(new Message(MessageType.AGENT, currentStreamingLine + "▊"));
-            }
-        }
-        historyList.data(displayMessages, msg -> {
+        historyList.data(buildDisplayMessages(), msg -> {
             final var prefix = msg.type() == MessageType.USER ? "> " : "  ";
             final var element = new TextElement(prefix + msg.content()).overflow(Overflow.WRAP_WORD);
             return switch (msg.type()) {
@@ -158,74 +163,132 @@ public class TerminalUi extends ToolkitApp {
                 case SYSTEM -> element.dim();
             };
         });
-        final var activeInput = streaming ? loadingSpinner : inputField;
-        final var modeLabel = agentService.isPlanMode() ? text(" [PLAN MODE]").yellow() : text(" [EXECUTE MODE]").green();
-        final var hintsText = text(HINTS).dim();
         final var suggestions = currentSuggestions();
-        final var bottomChildren = new ArrayList<Element>();
-        if (!suggestions.isEmpty()) {
-            final var selected = Math.min(selectedSuggestion, suggestions.size() - 1);
-            for (var index = 0; index < suggestions.size(); index++) {
-                final var command = suggestions.get(index);
-                final var line = text("  /" + command.commandName() + "  " + command.description());
-                bottomChildren.add(index == selected ? line.cyan().bold() : line.dim());
-            }
-        }
-        final var approval = pendingApproval;
-        if (Objects.nonNull(approval)) {
-            bottomChildren.add(text("⚠ Approve destructive command?  [y] run   [n] deny").yellow().bold());
-            bottomChildren.add(text("  " + approval.command()).dim());
-        }
-        bottomChildren.add(activeInput);
-        bottomChildren.add(row(hintsText, modeLabel));
-        final var bottom = panel(column(bottomChildren.toArray(Element[]::new)).spacing(0)).borderless();
+        final var approval = pendingApproval.get();
+        final var bottom = panel(column(buildBottomChildren(suggestions, approval).toArray(Element[]::new)).spacing(0)).borderless();
         final var extraLines = suggestions.size() + (Objects.nonNull(approval) ? 2 : 0);
         return dock()
                 .center(historyList.displayOnly().stickyScroll().scrollbar())
                 .bottom(bottom, length(BOTTOM_HEIGHT + extraLines))
                 .focusable()
-                .onKeyEvent(event -> {
-                    if (event.hasCtrl() && event.isChar('c')) {
-                        final var now = System.currentTimeMillis();
-                        if (ctrlCPressedOnce && now - ctrlCFirstPressTime <= 2000) {
-                            quit();
-                        } else {
-                            ctrlCPressedOnce = true;
-                            ctrlCFirstPressTime = now;
-                            inputState.clear();
-                        }
-                        return EventResult.HANDLED;
-                    }
-                    ctrlCPressedOnce = false;
-                    final var approvalRequest = pendingApproval;
-                    if (Objects.nonNull(approvalRequest)) {
-                        if (event.isChar('y') || event.isChar('Y')) {
-                            resolveApproval(approvalRequest, true);
-                        } else if (event.isChar('n') || event.isChar('N')
-                                || event.code() == KeyCode.ESCAPE || event.code() == KeyCode.ENTER) {
-                            resolveApproval(approvalRequest, false);
-                        }
-                        return EventResult.HANDLED;
-                    }
-                    if (event.code() == KeyCode.ESCAPE && streaming) {
-                        cancelStreaming();
-                        return EventResult.HANDLED;
-                    }
-                    if (event.hasCtrl() && event.isChar('l')) {
-                        clearConversation();
-                        return EventResult.HANDLED;
-                    }
-                    if (event.hasCtrl() && event.isChar('p')) {
-                        togglePlanMode();
-                        return EventResult.HANDLED;
-                    }
-                    if (event.hasCtrl() && event.isChar('y') && planReady && !streaming) {
-                        planReady = false;
-                        implementPlan();
-                        return EventResult.HANDLED;
-                    }
-                    return historyList.handleKeyEvent(event, false);
-                });
+                .onKeyEvent(this::handleRootKeyEvent);
+    }
+
+    /// Builds the conversation lines for the current frame, appending the in-flight streaming lines
+    /// and the trailing partial line (with a cursor) while a turn is streaming.
+    ///
+    /// @return the messages to render in the conversation view
+    private List<Message> buildDisplayMessages() {
+        final var displayMessages = new ArrayList<>(List.copyOf(messages));
+        if (!streaming) {
+            return displayMessages;
+        }
+        for (final var line : List.copyOf(streamingLines)) {
+            displayMessages.add(new Message(MessageType.AGENT, line));
+        }
+        if (!currentStreamingLine.isEmpty()) {
+            displayMessages.add(new Message(MessageType.AGENT, currentStreamingLine + "▊"));
+        }
+        return displayMessages;
+    }
+
+    /// Builds the bottom-area elements: the highlighted command suggestions, the approval prompt when
+    /// one is pending, the active input (or spinner), and the hints row.
+    ///
+    /// @param suggestions the current command suggestions
+    /// @param approval the pending approval request, or `null` when none is pending
+    /// @return the ordered list of bottom-area elements
+    private List<Element> buildBottomChildren(final List<SlashCommand> suggestions, final ApprovalRequest approval) {
+        final var activeInput = streaming ? loadingSpinner : inputField;
+        final var modeLabel = agentService.isPlanMode() ? text(" [PLAN MODE]").yellow() : text(" [EXECUTE MODE]").green();
+        final var bottomChildren = new ArrayList<>(buildSuggestionElements(suggestions));
+        if (Objects.nonNull(approval)) {
+            bottomChildren.add(text("⚠ Approve destructive command?  [y] run   [n] deny").yellow().bold());
+            bottomChildren.add(text("  " + approval.command()).dim());
+        }
+        bottomChildren.add(activeInput);
+        bottomChildren.add(row(text(HINTS).dim(), modeLabel));
+        return bottomChildren;
+    }
+
+    /// Builds the highlighted command-suggestion rows, with the selected entry emphasized, or an empty
+    /// list when no suggestions are shown.
+    ///
+    /// @param suggestions the current command suggestions
+    /// @return one element per suggestion, in order
+    private List<Element> buildSuggestionElements(final List<SlashCommand> suggestions) {
+        final var elements = new ArrayList<Element>();
+        final var selected = Math.min(selectedSuggestion.get(), suggestions.size() - 1);
+        for (var index = 0; index < suggestions.size(); index++) {
+            final var command = suggestions.get(index);
+            final var line = text("  /" + command.commandName() + "  " + command.description());
+            elements.add(index == selected ? line.cyan().bold() : line.dim());
+        }
+        return elements;
+    }
+
+    /// Top-level key handler for shortcuts and approval decisions: double Ctrl+C to quit, approval
+    /// y/n while a command awaits approval, Esc to cancel streaming, and the clear/plan/implement
+    /// shortcuts, delegating anything else to the conversation list.
+    ///
+    /// @param event the key event to dispatch
+    /// @return the result of handling the event
+    private EventResult handleRootKeyEvent(final KeyEvent event) {
+        if (event.hasCtrl() && event.isChar('c')) {
+            handleCtrlC();
+            return EventResult.HANDLED;
+        }
+        ctrlCPressedOnce = false;
+        final var approvalRequest = pendingApproval.get();
+        if (Objects.nonNull(approvalRequest)) {
+            return handleApprovalKey(event, approvalRequest);
+        }
+        if (event.code() == KeyCode.ESCAPE && streaming) {
+            cancelStreaming();
+            return EventResult.HANDLED;
+        }
+        if (event.hasCtrl() && event.isChar('l')) {
+            clearConversation();
+            return EventResult.HANDLED;
+        }
+        if (event.hasCtrl() && event.isChar('p')) {
+            togglePlanMode();
+            return EventResult.HANDLED;
+        }
+        if (event.hasCtrl() && event.isChar('y') && planReady && !streaming) {
+            planReady = false;
+            implementPlan();
+            return EventResult.HANDLED;
+        }
+        return historyList.handleKeyEvent(event, false);
+    }
+
+    /// Handles a Ctrl+C press: quits on a second press within two seconds, otherwise arms the quit
+    /// confirmation and clears the input.
+    private void handleCtrlC() {
+        final var now = System.currentTimeMillis();
+        if (ctrlCPressedOnce && now - ctrlCFirstPressTime <= 2000) {
+            quit();
+            return;
+        }
+        ctrlCPressedOnce = true;
+        ctrlCFirstPressTime = now;
+        inputState.clear();
+    }
+
+    /// Resolves the pending approval from a key press, allowing on y and denying on n, Esc, or Enter.
+    ///
+    /// @param event the key event to interpret
+    /// @param approvalRequest the pending approval request
+    /// @return [EventResult#HANDLED] since the key event is consumed
+    private EventResult handleApprovalKey(final KeyEvent event, final ApprovalRequest approvalRequest) {
+        if (event.isChar('y') || event.isChar('Y')) {
+            resolveApproval(approvalRequest, true);
+        } else if (event.isChar('n') || event.isChar('N')
+                || event.code() == KeyCode.ESCAPE || event.code() == KeyCode.ENTER) {
+            resolveApproval(approvalRequest, false);
+        }
+        return EventResult.HANDLED;
     }
 
     /// Shows the welcome message and subscribes to approval requests so a pending one surfaces in
@@ -235,12 +298,12 @@ public class TerminalUi extends ToolkitApp {
         final var content = "Coding Agent ready. Type a message below.";
         final var message = new Message(MessageType.SYSTEM, content);
         messages.add(message);
-        approvalService.requests().subscribe(request -> pendingApproval = request);
+        approvalService.requests().subscribe(pendingApproval::set);
     }
 
     /// Replaces the input with the previous (older) history entry.
     ///
-    /// @return [EventResult#HANDLED]
+    /// @return [EventResult#HANDLED] since the key event is consumed
     private EventResult navigateHistoryUp() {
         final var entry = inputHistory.navigateUp(inputState.text());
         inputState.setText(entry);
@@ -250,7 +313,7 @@ public class TerminalUi extends ToolkitApp {
 
     /// Replaces the input with the next (more recent) history entry, or the restored draft.
     ///
-    /// @return [EventResult#HANDLED]
+    /// @return [EventResult#HANDLED] since the key event is consumed
     private EventResult navigateHistoryDown() {
         final var entry = inputHistory.navigateDown();
         inputState.setText(entry);
@@ -296,9 +359,9 @@ public class TerminalUi extends ToolkitApp {
     /// can be typed.
     ///
     /// @param suggestions the current suggestion list
-    /// @return [EventResult#HANDLED]
+    /// @return [EventResult#HANDLED] since the key event is consumed
     private EventResult completeSuggestion(final List<SlashCommand> suggestions) {
-        final var index = Math.min(selectedSuggestion, suggestions.size() - 1);
+        final var index = Math.min(selectedSuggestion.get(), suggestions.size() - 1);
         inputState.setText("/" + suggestions.get(index).commandName() + " ");
         inputState.moveCursorToEnd();
         return EventResult.HANDLED;
@@ -341,7 +404,7 @@ public class TerminalUi extends ToolkitApp {
         if (matches.isEmpty()) {
             return Optional.empty();
         }
-        return Optional.of(matches.get(Math.min(selectedSuggestion, matches.size() - 1)));
+        return Optional.of(matches.get(Math.min(selectedSuggestion.get(), matches.size() - 1)));
     }
 
     /// Executes a resolved command: local commands (plan, clear, help) act directly, while
@@ -350,7 +413,7 @@ public class TerminalUi extends ToolkitApp {
     /// @param command the command to run
     /// @param arguments the raw arguments typed after the command
     private void executeCommand(final SlashCommand command, final String arguments) {
-        selectedSuggestion = 0;
+        selectedSuggestion.set(0);
         switch (command) {
             case PLAN -> togglePlanMode();
             case CLEAR -> clearConversation();
@@ -382,33 +445,25 @@ public class TerminalUi extends ToolkitApp {
         streamingLines.clear();
         streamingLineBuffer.setLength(0);
         currentStreamingLine = "";
-        toolEventSubscription = toolEventSink.events()
-                .subscribe(event -> messages.add(new Message(MessageType.SYSTEM, event)));
-        streamSubscription = agentService.streamChat(message)
+        toolEventSubscription.set(toolEventSink.events()
+                .subscribe(event -> messages.add(new Message(MessageType.SYSTEM, event))));
+        streamSubscription.set(agentService.streamChat(message)
                 .doOnNext(this::handleStreamingToken)
                 .doOnComplete(this::finalizeStreaming)
                 .doOnError(this::handleStreamingError)
-                .subscribe();
+                .subscribe());
     }
 
     /// Cancels the in-progress turn: denies any pending approval, disposes the subscriptions, flushes
     /// the partial output, and marks the turn cancelled.
     private void cancelStreaming() {
         denyPendingApproval();
-        if (Objects.nonNull(streamSubscription) && !streamSubscription.isDisposed()) {
-            streamSubscription.dispose();
+        final var subscription = streamSubscription.get();
+        if (Objects.nonNull(subscription) && !subscription.isDisposed()) {
+            subscription.dispose();
         }
         disposeToolEventSubscription();
-        if (!streamingLineBuffer.isEmpty()) {
-            streamingLines.add(streamingLineBuffer.toString());
-        }
-        for (final var line : streamingLines) {
-            messages.add(new Message(MessageType.AGENT, line));
-        }
-        streamingLines.clear();
-        streamingLineBuffer.setLength(0);
-        currentStreamingLine = "";
-        streaming = false;
+        flushStreamingIntoConversation();
         messages.add(new Message(MessageType.SYSTEM, "Cancelled."));
     }
 
@@ -417,8 +472,8 @@ public class TerminalUi extends ToolkitApp {
     ///
     /// @param approval the pending approval request
     /// @param approved `true` to allow the command, `false` to deny it
-    private void resolveApproval(final CommandApprovalService.ApprovalRequest approval, final boolean approved) {
-        pendingApproval = null;
+    private void resolveApproval(final ApprovalRequest approval, final boolean approved) {
+        pendingApproval.set(null);
         approval.decision().complete(approved);
         messages.add(new Message(MessageType.SYSTEM, (approved ? "Approved: " : "Denied: ") + approval.command()));
     }
@@ -426,9 +481,8 @@ public class TerminalUi extends ToolkitApp {
     /// Denies any pending approval without a message, used when cancelling or clearing so the waiting
     /// tool thread is released.
     private void denyPendingApproval() {
-        final var approval = pendingApproval;
+        final var approval = pendingApproval.getAndSet(null);
         if (Objects.nonNull(approval)) {
-            pendingApproval = null;
             approval.decision().complete(false);
         }
     }
@@ -463,16 +517,7 @@ public class TerminalUi extends ToolkitApp {
     /// and — when in plan mode — marks the plan ready for the user to approve implementation.
     private void finalizeStreaming() {
         disposeToolEventSubscription();
-        if (!streamingLineBuffer.isEmpty()) {
-            streamingLines.add(streamingLineBuffer.toString());
-        }
-        for (final var line : streamingLines) {
-            messages.add(new Message(MessageType.AGENT, line));
-        }
-        streamingLines.clear();
-        streamingLineBuffer.setLength(0);
-        currentStreamingLine = "";
-        streaming = false;
+        flushStreamingIntoConversation();
         if (agentService.isPlanMode()) {
             planReady = true;
             messages.add(new Message(MessageType.SYSTEM, "Plan ready — press Ctrl+Y to implement, or keep chatting to refine it."));
@@ -506,7 +551,7 @@ public class TerminalUi extends ToolkitApp {
             }
             cause = cause.getCause();
         }
-        return error.getMessage();
+        return Optional.ofNullable(error).map(Throwable::getMessage).orElse("Unknown error");
     }
 
     /// Toggles plan mode and announces the new mode as a system message.
@@ -534,10 +579,26 @@ public class TerminalUi extends ToolkitApp {
         inputHistory.resetNavigation();
     }
 
+    /// Flushes any buffered streaming output into the conversation as finished agent lines and resets
+    /// the streaming state.
+    private void flushStreamingIntoConversation() {
+        if (!streamingLineBuffer.isEmpty()) {
+            streamingLines.add(streamingLineBuffer.toString());
+        }
+        for (final var line : streamingLines) {
+            messages.add(new Message(MessageType.AGENT, line));
+        }
+        streamingLines.clear();
+        streamingLineBuffer.setLength(0);
+        currentStreamingLine = "";
+        streaming = false;
+    }
+
     /// Disposes the tool-event subscription if it is active.
     private void disposeToolEventSubscription() {
-        if (Objects.nonNull(toolEventSubscription) && !toolEventSubscription.isDisposed()) {
-            toolEventSubscription.dispose();
+        final var subscription = toolEventSubscription.get();
+        if (Objects.nonNull(subscription) && !subscription.isDisposed()) {
+            subscription.dispose();
         }
     }
 }

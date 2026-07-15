@@ -11,6 +11,7 @@ import reactor.core.publisher.Flux;
 
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /// Orchestrates a single agent turn: builds the system prompt (optionally augmented with plan or
 /// execution instructions), streams the model response through the configured [ChatClient], and
@@ -44,7 +45,7 @@ Start immediately with tool calls — do not introduce or summarize, just execut
 
     private final String sessionId = UUID.randomUUID().toString();
     private final Map<String, Object> workingDirContext = Map.of("workingDir", System.getProperty("user.dir"));
-    private volatile boolean planMode = false;
+    private final AtomicBoolean planMode = new AtomicBoolean(false);
     private volatile boolean executionAfterPlan = false;
 
     /// Creates the agent service.
@@ -86,14 +87,15 @@ Start immediately with tool calls — do not introduce or summarize, just execut
     ///
     /// @return `true` if plan mode is now active, `false` otherwise
     public boolean togglePlanMode() {
-        planMode = !planMode;
-        return planMode;
+        final var newMode = !planMode.get();
+        planMode.set(newMode);
+        return newMode;
     }
 
     /// Leaves plan mode and marks the next turn as the execution of the just-produced plan, so the
     /// next [#streamChat(String)] is augmented with execution instructions.
     public void activateExecutionAfterPlan() {
-        planMode = false;
+        planMode.set(false);
         executionAfterPlan = true;
     }
 
@@ -101,7 +103,7 @@ Start immediately with tool calls — do not introduce or summarize, just execut
     ///
     /// @return `true` if plan mode is active
     public boolean isPlanMode() {
-        return planMode;
+        return planMode.get();
     }
 
     /// Renders the base system prompt and appends the plan or execution instructions when the
@@ -110,7 +112,7 @@ Start immediately with tool calls — do not introduce or summarize, just execut
     /// @return the system prompt to send for the current turn
     private String buildSystemPrompt() {
         final var base = new PromptTemplate(systemPromptResource).render(workingDirContext);
-        if (planMode) {
+        if (planMode.get()) {
             return base + PLAN_MODE_INSTRUCTIONS;
         }
         if (executionAfterPlan) {

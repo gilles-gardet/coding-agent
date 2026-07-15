@@ -168,14 +168,6 @@ public class TavilyWebSearchTool {
                 .toList();
     }
 
-    /// A single web-search result.
-    ///
-    /// @param title the result title
-    /// @param url the result URL
-    /// @param description a short content snippet, possibly empty
-    public record SearchResult(String title, String url, String description) {
-    }
-
     /// Creates a builder for the tool.
     ///
     /// @param apiKey the Tavily API key

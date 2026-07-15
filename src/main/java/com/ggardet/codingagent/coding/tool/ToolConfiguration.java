@@ -22,8 +22,9 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.ClassPathResource;
 
 /// Declares the tool beans exposed to the model — file system, search, shell, web search, skills,
-/// and todo tools — and assembles them into the [ToolCallback] array wired into the chat client.
+/// and task-plan tools — and assembles them into the [ToolCallback] array wired into the chat client.
 @Configuration
+@SuppressWarnings("java:S1135") // S1135 targets the TodoWriteTool bean domain, not code task markers
 public class ToolConfiguration {
     /// Provides the file read/write tool.
     ///
@@ -105,10 +106,10 @@ public class ToolConfiguration {
         }
     }
 
-    /// Provides the todo-list tool, forwarding each update to the UI as a formatted event.
+    /// Provides the task-plan tool, forwarding each update to the UI as a formatted event.
     ///
-    /// @param toolEventSink the sink todo updates are published to
-    /// @return the todo-write tool
+    /// @param toolEventSink the sink task-plan updates are published to
+    /// @return the task-plan tool
     @Bean
     public TodoWriteTool todoWriteTool(final ToolEventSink toolEventSink) {
         return TodoWriteTool.builder()
@@ -124,7 +125,7 @@ public class ToolConfiguration {
     /// @param shellTools the shell-command tool
     /// @param tavilyWebSearchTool the web-search tool
     /// @param skillsTool the skills tool callback
-    /// @param todoWriteTool the todo-list tool
+    /// @param todoWriteTool the task-plan tool
     /// @return the combined array of tool callbacks
     @Bean
     public ToolCallback[] agentTools(
@@ -152,9 +153,9 @@ public class ToolConfiguration {
                 .toArray(ToolCallback[]::new);
     }
 
-    /// Formats a todo list into a multi-line, icon-prefixed string for display in the UI.
+    /// Formats a task list into a multi-line, icon-prefixed string for display in the UI.
     ///
-    /// @param todos the current todo list
+    /// @param todos the current task list
     /// @return the formatted task-plan text
     private static String formatTodos(final TodoWriteTool.Todos todos) {
         final var sb = new StringBuilder("📋 Task Plan:");

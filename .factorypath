@@ -1,0 +1,7 @@
+<factorypath>
+    <factorypathentry kind="VARJAR" id="M2_REPO/dev/tamboui/tamboui-processor/0.2.0-SNAPSHOT/tamboui-processor-0.2.0-SNAPSHOT.jar" enabled="true" runInBatchMode="false"/>
+    <factorypathentry kind="VARJAR" id="M2_REPO/dev/tamboui/tamboui-annotations/0.2.0-SNAPSHOT/tamboui-annotations-0.2.0-SNAPSHOT.jar" enabled="true" runInBatchMode="false"/>
+    <factorypathentry kind="VARJAR" id="M2_REPO/dev/tamboui/tamboui-tui/0.2.0-SNAPSHOT/tamboui-tui-0.2.0-SNAPSHOT.jar" enabled="true" runInBatchMode="false"/>
+    <factorypathentry kind="VARJAR" id="M2_REPO/dev/tamboui/tamboui-core/0.2.0-SNAPSHOT/tamboui-core-0.2.0-SNAPSHOT.jar" enabled="true" runInBatchMode="false"/>
+    <factorypathentry kind="VARJAR" id="M2_REPO/dev/tamboui/tamboui-widgets/0.2.0-SNAPSHOT/tamboui-widgets-0.2.0-SNAPSHOT.jar" enabled="true" runInBatchMode="false"/>
+</factorypath>

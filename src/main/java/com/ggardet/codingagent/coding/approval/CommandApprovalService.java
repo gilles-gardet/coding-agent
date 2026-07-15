@@ -13,12 +13,6 @@ import java.util.concurrent.TimeUnit;
 /// has decided.
 @Component
 public class CommandApprovalService {
-    /// A pending approval for a single command.
-    ///
-    /// @param command the shell command awaiting approval
-    /// @param decision the future the UI completes with the user's decision (`true` to allow)
-    public record ApprovalRequest(String command, CompletableFuture<Boolean> decision) {}
-
     private static final long APPROVAL_TIMEOUT_SECONDS = 300;
     private final Sinks.Many<ApprovalRequest> requests = Sinks.many().multicast().directBestEffort();
 
@@ -33,7 +27,10 @@ public class CommandApprovalService {
         requests.tryEmitNext(request);
         try {
             return request.decision().get(APPROVAL_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-        } catch (final Exception exception) {
+        } catch (final InterruptedException _) {
+            Thread.currentThread().interrupt();
+            return false;
+        } catch (final Exception _) {
             return false;
         }
     }

@@ -16,8 +16,8 @@ public enum SlashCommand {
     ANALYZE("analyze", "Analyze the codebase architecture and quality", """
             Analyze this codebase. Explore the project structure and summarize its architecture, main \
             components, notable patterns, and any technical debt or risks you find.{args}"""),
-    EXPLAIN("explain", "Explain a file, function, or concept", """
-            Explain the following, reading any relevant files first: {args}"""),
+    EXPLAIN("explain", "Explain a file, function, or concept",
+            "Explain the following, reading any relevant files first: {args}"),
     TEST("test", "Run the test suite and fix failures", """
             Run the project's test suite using the shell tool. If any tests fail, analyze and fix them, \
             then re-run until green. Report what you changed.{args}"""),
@@ -34,8 +34,8 @@ public enum SlashCommand {
 
     /// Defines a slash command.
     ///
-    /// @param commandName the command name typed after the leading slash
-    /// @param description the one-line description shown in autocompletion and help
+    /// @param commandName    the command name typed after the leading slash
+    /// @param description    the one-line description shown in autocompletion and help
     /// @param promptTemplate the prompt template with a `{args}` placeholder, or `null` for a
     ///        command handled locally by the UI
     SlashCommand(final String commandName, final String description, final String promptTemplate) {
@@ -66,10 +66,8 @@ public enum SlashCommand {
     /// @return the fully expanded prompt to send to the agent
     public String expand(final String arguments) {
         final var trimmed = Objects.requireNonNullElse(arguments, "").trim();
-        final var slot = switch (this) {
-            case EXPLAIN -> trimmed;
-            default -> trimmed.isEmpty() ? "" : " Additional focus: " + trimmed;
-        };
+        final var focusSuffix = trimmed.isEmpty() ? "" : " Additional focus: " + trimmed;
+        final var slot = EXPLAIN == this ? trimmed : focusSuffix;
         return promptTemplate.replace("{args}", slot);
     }
 

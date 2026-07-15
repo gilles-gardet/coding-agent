@@ -10,9 +10,6 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.ImportRuntimeHints;
 import org.springframework.util.StringUtils;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
 import java.util.Objects;
 
 /// Spring Boot entry point. Ensures the required API keys are present, boots the application
@@ -73,14 +70,7 @@ public class CodingAgentApplication implements ApplicationRunner {
             final var secret = console.readPassword(prompt);
             return Objects.isNull(secret) ? "" : new String(secret).trim();
         }
-        System.out.print(prompt);
-        System.out.flush();
-        try {
-            final var line = new BufferedReader(new InputStreamReader(System.in)).readLine();
-            return Objects.requireNonNullElse(line, "").trim();
-        } catch (final IOException exception) {
-            return "";
-        }
+        return Objects.requireNonNullElse(IO.readln(prompt), "").trim();
     }
 
     /// Runs the terminal UI once the context is ready, then exits the process when it returns.
