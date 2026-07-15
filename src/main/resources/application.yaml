@@ -9,7 +9,10 @@ spring:
     openai:
       api-key: ${OPENAI_API_KEY}
       chat.options.model: gpt-4o-mini
-    session.repository.jdbc.initialize-schema: always
+    # Sessions are backed by an in-memory repository (see MemoryConfiguration), so the JDBC
+    # session schema initializer is disabled — it would otherwise fail in the native image
+    # looking for a schema script that is not registered as a resource.
+    session.repository.jdbc.initialize-schema: never
     chat:
       client.observations:
         log-prompt: true

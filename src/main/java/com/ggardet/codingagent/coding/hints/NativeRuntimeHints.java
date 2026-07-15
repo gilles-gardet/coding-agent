@@ -1,5 +1,6 @@
 package com.ggardet.codingagent.coding.hints;
 
+import org.springaicommunity.agent.tools.AutoMemoryTools;
 import org.springaicommunity.agent.tools.FileSystemTools;
 import org.springaicommunity.agent.tools.GlobTool;
 import org.springaicommunity.agent.tools.GrepTool;
@@ -27,9 +28,14 @@ public class NativeRuntimeHints implements RuntimeHintsRegistrar {
                         MemberCategory.INVOKE_DECLARED_METHODS)
                 .registerType(TodoWriteTool.class,
                         MemberCategory.INVOKE_PUBLIC_METHODS,
+                        MemberCategory.INVOKE_DECLARED_METHODS)
+                .registerType(AutoMemoryTools.class,
+                        MemberCategory.INVOKE_PUBLIC_METHODS,
                         MemberCategory.INVOKE_DECLARED_METHODS);
         hints.resources()
                 .registerPattern("dev/tamboui/tui/bindings/*.properties")
-                .registerPattern(".agent/skills/**");
+                .registerPattern(".agent/skills/**")
+                .registerPattern("prompt/*.md")
+                .registerPattern("prompts/*.st");
     }
 }

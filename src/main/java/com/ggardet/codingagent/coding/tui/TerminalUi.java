@@ -1,5 +1,6 @@
 package com.ggardet.codingagent.coding.tui;
 
+import com.ggardet.codingagent.coding.approval.CommandApprovalService;
 import com.ggardet.codingagent.coding.command.SlashCommand;
 import com.ggardet.codingagent.coding.history.InputHistory;
 import com.ggardet.codingagent.agent.event.ToolEventSink;
@@ -44,6 +45,7 @@ public class TerminalUi extends ToolkitApp {
     private final AgentService agentService;
     private final ToolEventSink toolEventSink;
     private final InputHistory inputHistory;
+    private final CommandApprovalService approvalService;
     private final TextInputState inputState = new TextInputState();
     private final CopyOnWriteArrayList<Message> messages = new CopyOnWriteArrayList<>();
     private final CopyOnWriteArrayList<String> streamingLines = new CopyOnWriteArrayList<>();
@@ -58,15 +60,17 @@ public class TerminalUi extends ToolkitApp {
     private volatile long ctrlCFirstPressTime = 0;
     private volatile Disposable toolEventSubscription;
     private volatile Disposable streamSubscription;
+    private volatile CommandApprovalService.ApprovalRequest pendingApproval;
     private final TextInputElement inputField;
 
     private static final int BOTTOM_HEIGHT = 6;
     private static final String HINTS = " Enter: send  /: commands  Esc: cancel  Ctrl+C: quit  Ctrl+L: clear  Ctrl+P: plan";
 
-    public TerminalUi(final AgentService agentService, final ToolEventSink toolEventSink, final InputHistory inputHistory) {
+    public TerminalUi(final AgentService agentService, final ToolEventSink toolEventSink, final InputHistory inputHistory, final CommandApprovalService approvalService) {
         this.agentService = agentService;
         this.toolEventSink = toolEventSink;
         this.inputHistory = inputHistory;
+        this.approvalService = approvalService;
         this.inputField = textInput(inputState)
                 .placeholder("Type a message and press Enter...")
                 .focusable()
@@ -144,12 +148,18 @@ public class TerminalUi extends ToolkitApp {
                 bottomChildren.add(index == selected ? line.cyan().bold() : line.dim());
             }
         }
+        final var approval = pendingApproval;
+        if (approval != null) {
+            bottomChildren.add(text("⚠ Approve destructive command?  [y] run   [n] deny").yellow().bold());
+            bottomChildren.add(text("  " + approval.command()).dim());
+        }
         bottomChildren.add(activeInput);
         bottomChildren.add(row(hintsText, modeLabel));
         final var bottom = panel(column(bottomChildren.toArray(Element[]::new)).spacing(0)).borderless();
+        final var extraLines = suggestions.size() + (approval != null ? 2 : 0);
         return dock()
                 .center(historyList.displayOnly().stickyScroll().scrollbar())
-                .bottom(bottom, length(BOTTOM_HEIGHT + suggestions.size()))
+                .bottom(bottom, length(BOTTOM_HEIGHT + extraLines))
                 .focusable()
                 .onKeyEvent(event -> {
                     if (event.hasCtrl() && event.isChar('c')) {
@@ -164,6 +174,16 @@ public class TerminalUi extends ToolkitApp {
                         return EventResult.HANDLED;
                     }
                     ctrlCPressedOnce = false;
+                    final var approvalRequest = pendingApproval;
+                    if (approvalRequest != null) {
+                        if (event.isChar('y') || event.isChar('Y')) {
+                            resolveApproval(approvalRequest, true);
+                        } else if (event.isChar('n') || event.isChar('N')
+                                || event.code() == KeyCode.ESCAPE || event.code() == KeyCode.ENTER) {
+                            resolveApproval(approvalRequest, false);
+                        }
+                        return EventResult.HANDLED;
+                    }
                     if (event.code() == KeyCode.ESCAPE && streaming) {
                         cancelStreaming();
                         return EventResult.HANDLED;
@@ -190,6 +210,7 @@ public class TerminalUi extends ToolkitApp {
         final var content = "Coding Agent ready. Type a message below.";
         final var message = new Message(MessageType.SYSTEM, content);
         messages.add(message);
+        approvalService.requests().subscribe(request -> pendingApproval = request);
     }
 
     private EventResult navigateHistoryUp() {
@@ -309,6 +330,7 @@ public class TerminalUi extends ToolkitApp {
     }
 
     private void cancelStreaming() {
+        denyPendingApproval();
         if (streamSubscription != null && !streamSubscription.isDisposed()) {
             streamSubscription.dispose();
         }
@@ -324,6 +346,20 @@ public class TerminalUi extends ToolkitApp {
         currentStreamingLine = "";
         streaming = false;
         messages.add(new Message(MessageType.SYSTEM, "Cancelled."));
+    }
+
+    private void resolveApproval(final CommandApprovalService.ApprovalRequest approval, final boolean approved) {
+        pendingApproval = null;
+        approval.decision().complete(approved);
+        messages.add(new Message(MessageType.SYSTEM, (approved ? "Approved: " : "Denied: ") + approval.command()));
+    }
+
+    private void denyPendingApproval() {
+        final var approval = pendingApproval;
+        if (approval != null) {
+            pendingApproval = null;
+            approval.decision().complete(false);
+        }
     }
 
     private void implementPlan() {
@@ -395,6 +431,7 @@ public class TerminalUi extends ToolkitApp {
     }
 
     private void clearConversation() {
+        denyPendingApproval();
         disposeToolEventSubscription();
         agentService.clearMemory();
         messages.clear();

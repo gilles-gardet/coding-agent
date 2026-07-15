@@ -13,9 +13,7 @@ import org.springaicommunity.agent.tools.GlobTool;
 import org.springaicommunity.agent.tools.GrepTool;
 import org.springaicommunity.agent.tools.ShellTools;
 import org.springaicommunity.agent.tools.SkillsTool;
-import org.springaicommunity.agent.tools.SmartWebFetchTool;
 import org.springaicommunity.agent.tools.TodoWriteTool;
-import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.annotation.Value;
@@ -100,18 +98,19 @@ public class ToolConfiguration {
             final GlobTool globTool,
             final ShellTools shellTools,
             final TavilyWebSearchTool tavilyWebSearchTool,
-            final ChatClient.Builder chatClientBuilder,
             final ToolCallback skillsTool,
             final TodoWriteTool todoWriteTool
     ) {
-        final var smartWebFetchTool = SmartWebFetchTool.builder(chatClientBuilder.build()).build();
+        // SmartWebFetchTool is intentionally excluded: its HTML-to-markdown engine (flexmark)
+        // fails to initialize in a GraalVM native image (BitFieldSet reads empty enum constants).
+        // Web search via Tavily remains. To restore URL fetching, re-add the tool and initialize
+        // flexmark at build time (see native-image buildArgs in the README/pom).
         final var baseTools = ToolCallbacks.from(
                 fileSystemTools,
                 grepTool,
                 globTool,
                 shellTools,
                 tavilyWebSearchTool,
-                smartWebFetchTool,
                 todoWriteTool
         );
         return Stream.concat(Arrays.stream(baseTools), Stream.of(skillsTool))
