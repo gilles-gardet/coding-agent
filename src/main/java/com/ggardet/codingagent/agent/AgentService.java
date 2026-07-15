@@ -12,6 +12,9 @@ import reactor.core.publisher.Flux;
 import java.util.Map;
 import java.util.UUID;
 
+/// Orchestrates a single agent turn: builds the system prompt (optionally augmented with plan or
+/// execution instructions), streams the model response through the configured [ChatClient], and
+/// tracks the plan-mode state machine and the per-run session identity.
 @Service
 public class AgentService {
     private final Resource systemPromptResource;
@@ -44,6 +47,11 @@ Start immediately with tool calls — do not introduce or summarize, just execut
     private volatile boolean planMode = false;
     private volatile boolean executionAfterPlan = false;
 
+    /// Creates the agent service.
+    ///
+    /// @param systemPromptResource the base system prompt template loaded from the classpath
+    /// @param chatClient the configured chat client carrying tools, advisors, and memory
+    /// @param chatMemory the conversation memory store, used to clear the current session
     public AgentService(
             final @Value("classpath:/prompts/system.st") Resource systemPromptResource,
             final ChatClient chatClient,
@@ -53,6 +61,11 @@ Start immediately with tool calls — do not introduce or summarize, just execut
         this.chatMemory = chatMemory;
     }
 
+    /// Streams the model's response to a user message for the current session, applying the system
+    /// prompt for the active mode. Consuming the returned flux drives the tool-calling loop.
+    ///
+    /// @param message the user message to send
+    /// @return a flux of response content tokens as they are produced
     public Flux<String> streamChat(final String message) {
         final var systemPrompt = buildSystemPrompt();
         executionAfterPlan = false;
@@ -64,24 +77,37 @@ Start immediately with tool calls — do not introduce or summarize, just execut
                 .content();
     }
 
+    /// Clears the conversation memory for the current session.
     public void clearMemory() {
         chatMemory.clear(sessionId);
     }
 
+    /// Toggles plan mode on or off.
+    ///
+    /// @return `true` if plan mode is now active, `false` otherwise
     public boolean togglePlanMode() {
         planMode = !planMode;
         return planMode;
     }
 
+    /// Leaves plan mode and marks the next turn as the execution of the just-produced plan, so the
+    /// next [#streamChat(String)] is augmented with execution instructions.
     public void activateExecutionAfterPlan() {
         planMode = false;
         executionAfterPlan = true;
     }
 
+    /// Reports whether plan mode is currently active.
+    ///
+    /// @return `true` if plan mode is active
     public boolean isPlanMode() {
         return planMode;
     }
 
+    /// Renders the base system prompt and appends the plan or execution instructions when the
+    /// corresponding mode is active.
+    ///
+    /// @return the system prompt to send for the current turn
     private String buildSystemPrompt() {
         final var base = new PromptTemplate(systemPromptResource).render(workingDirContext);
         if (planMode) {

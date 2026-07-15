@@ -20,8 +20,6 @@ import dev.tamboui.widgets.input.TextInputState;
 import dev.tamboui.widgets.spinner.SpinnerStyle;
 import org.springframework.stereotype.Component;
 
-import dev.tamboui.toolkit.element.Element;
-
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -38,9 +36,18 @@ import static dev.tamboui.toolkit.Toolkit.spinner;
 import static dev.tamboui.toolkit.Toolkit.text;
 import static dev.tamboui.toolkit.Toolkit.textInput;
 
+/// The terminal user interface. Renders the conversation, streams the agent's response, drives the
+/// input field with slash-command autocompletion and history navigation, handles keyboard shortcuts
+/// (cancel, plan mode, clear, quit), and prompts for approval of destructive commands.
 @Component
 public class TerminalUi extends ToolkitApp {
+    /// The origin of a displayed message, used to style it.
     private enum MessageType { USER, AGENT, SYSTEM }
+
+    /// A single line displayed in the conversation view.
+    ///
+    /// @param type the message origin
+    /// @param content the text to display
     private record Message(MessageType type, String content) {}
     private final AgentService agentService;
     private final ToolEventSink toolEventSink;
@@ -66,6 +73,13 @@ public class TerminalUi extends ToolkitApp {
     private static final int BOTTOM_HEIGHT = 6;
     private static final String HINTS = " Enter: send  /: commands  Esc: cancel  Ctrl+C: quit  Ctrl+L: clear  Ctrl+P: plan";
 
+    /// Creates the terminal UI and wires the input field's submit, autocompletion, history, and
+    /// unicode-input handlers.
+    ///
+    /// @param agentService the agent orchestration service
+    /// @param toolEventSink the source of tool-activity events shown during a turn
+    /// @param inputHistory the persistent input history
+    /// @param approvalService the destructive-command approval mediator
     public TerminalUi(final AgentService agentService, final ToolEventSink toolEventSink, final InputHistory inputHistory, final CommandApprovalService approvalService) {
         this.agentService = agentService;
         this.toolEventSink = toolEventSink;
@@ -108,6 +122,9 @@ public class TerminalUi extends ToolkitApp {
                 });
     }
 
+    /// Configures the TUI runtime, setting the render tick rate.
+    ///
+    /// @return the TUI configuration
     @Override
     protected TuiConfig configure() {
         return TuiConfig.builder()
@@ -115,6 +132,11 @@ public class TerminalUi extends ToolkitApp {
                 .build();
     }
 
+    /// Builds the full UI tree for the current frame: the scrolling conversation view plus the
+    /// bottom area (command suggestions, approval prompt, input/spinner, and hints), and installs
+    /// the top-level key handler for shortcuts and approval decisions.
+    ///
+    /// @return the root element to render
     @Override
     protected Element render() {
         final var displayMessages = new ArrayList<>(List.copyOf(messages));
@@ -205,6 +227,8 @@ public class TerminalUi extends ToolkitApp {
                 });
     }
 
+    /// Shows the welcome message and subscribes to approval requests so a pending one surfaces in
+    /// the UI.
     @Override
     protected void onStart() {
         final var content = "Coding Agent ready. Type a message below.";
@@ -213,6 +237,9 @@ public class TerminalUi extends ToolkitApp {
         approvalService.requests().subscribe(request -> pendingApproval = request);
     }
 
+    /// Replaces the input with the previous (older) history entry.
+    ///
+    /// @return [EventResult#HANDLED]
     private EventResult navigateHistoryUp() {
         final var entry = inputHistory.navigateUp(inputState.text());
         inputState.setText(entry);
@@ -220,6 +247,9 @@ public class TerminalUi extends ToolkitApp {
         return EventResult.HANDLED;
     }
 
+    /// Replaces the input with the next (more recent) history entry, or the restored draft.
+    ///
+    /// @return [EventResult#HANDLED]
     private EventResult navigateHistoryDown() {
         final var entry = inputHistory.navigateDown();
         inputState.setText(entry);
@@ -227,6 +257,8 @@ public class TerminalUi extends ToolkitApp {
         return EventResult.HANDLED;
     }
 
+    /// Handles input submission: dispatches slash commands, otherwise records the message and starts
+    /// streaming the agent's response. Ignores blank input and input while a turn is streaming.
     private void sendMessage() {
         final var message = inputState.text().trim();
         if (message.isEmpty() || streaming) {
@@ -243,6 +275,11 @@ public class TerminalUi extends ToolkitApp {
         startStreaming(message);
     }
 
+    /// Computes the slash-command suggestions for the current input: the commands whose names match
+    /// the typed prefix, shown only while typing a command name (before any space) and not while
+    /// streaming.
+    ///
+    /// @return the matching commands, or an empty list when no suggestions apply
     private List<SlashCommand> currentSuggestions() {
         if (streaming) {
             return List.of();
@@ -254,6 +291,11 @@ public class TerminalUi extends ToolkitApp {
         return SlashCommand.matching(text.substring(1).toLowerCase());
     }
 
+    /// Fills the input with the highlighted suggestion, followed by a trailing space so arguments
+    /// can be typed.
+    ///
+    /// @param suggestions the current suggestion list
+    /// @return [EventResult#HANDLED]
     private EventResult completeSuggestion(final List<SlashCommand> suggestions) {
         final var index = Math.min(selectedSuggestion, suggestions.size() - 1);
         inputState.setText("/" + suggestions.get(index).commandName() + " ");
@@ -261,6 +303,10 @@ public class TerminalUi extends ToolkitApp {
         return EventResult.HANDLED;
     }
 
+    /// Parses a slash-command input into a command name and arguments, resolves the command, and
+    /// executes it — showing help for a bare slash and an error for an unknown command.
+    ///
+    /// @param rawInput the full input starting with a slash
     private void handleCommand(final String rawInput) {
         final var withoutSlash = rawInput.substring(1);
         final var spaceIndex = withoutSlash.indexOf(' ');
@@ -280,6 +326,11 @@ public class TerminalUi extends ToolkitApp {
         executeCommand(resolved.get(), arguments);
     }
 
+    /// Resolves a typed command name to a command: an exact name match wins, otherwise the
+    /// highlighted prefix match is used.
+    ///
+    /// @param name the typed command name
+    /// @return the resolved command, or empty if no name matches
     private Optional<SlashCommand> resolveCommand(final String name) {
         final var exact = SlashCommand.byName(name);
         if (exact.isPresent()) {
@@ -292,6 +343,11 @@ public class TerminalUi extends ToolkitApp {
         return Optional.of(matches.get(Math.min(selectedSuggestion, matches.size() - 1)));
     }
 
+    /// Executes a resolved command: local commands (plan, clear, help) act directly, while
+    /// prompt-backed commands echo the command and stream the expanded prompt to the agent.
+    ///
+    /// @param command the command to run
+    /// @param arguments the raw arguments typed after the command
     private void executeCommand(final SlashCommand command, final String arguments) {
         selectedSuggestion = 0;
         switch (command) {
@@ -307,6 +363,7 @@ public class TerminalUi extends ToolkitApp {
         }
     }
 
+    /// Adds a system message listing every available slash command and its description.
     private void showHelp() {
         final var help = new StringBuilder("Available commands:");
         for (final var command : SlashCommand.values()) {
@@ -315,6 +372,10 @@ public class TerminalUi extends ToolkitApp {
         messages.add(new Message(MessageType.SYSTEM, help.toString()));
     }
 
+    /// Starts streaming the agent's response to a message, subscribing to tool events and wiring the
+    /// token, completion, and error handlers.
+    ///
+    /// @param message the message (or expanded command prompt) to send to the agent
     private void startStreaming(final String message) {
         streaming = true;
         streamingLines.clear();
@@ -329,6 +390,8 @@ public class TerminalUi extends ToolkitApp {
                 .subscribe();
     }
 
+    /// Cancels the in-progress turn: denies any pending approval, disposes the subscriptions, flushes
+    /// the partial output, and marks the turn cancelled.
     private void cancelStreaming() {
         denyPendingApproval();
         if (streamSubscription != null && !streamSubscription.isDisposed()) {
@@ -348,12 +411,19 @@ public class TerminalUi extends ToolkitApp {
         messages.add(new Message(MessageType.SYSTEM, "Cancelled."));
     }
 
+    /// Resolves a pending approval with the user's decision, unblocking the waiting tool thread and
+    /// recording the outcome as a system message.
+    ///
+    /// @param approval the pending approval request
+    /// @param approved `true` to allow the command, `false` to deny it
     private void resolveApproval(final CommandApprovalService.ApprovalRequest approval, final boolean approved) {
         pendingApproval = null;
         approval.decision().complete(approved);
         messages.add(new Message(MessageType.SYSTEM, (approved ? "Approved: " : "Denied: ") + approval.command()));
     }
 
+    /// Denies any pending approval without a message, used when cancelling or clearing so the waiting
+    /// tool thread is released.
     private void denyPendingApproval() {
         final var approval = pendingApproval;
         if (approval != null) {
@@ -362,12 +432,18 @@ public class TerminalUi extends ToolkitApp {
         }
     }
 
+    /// Switches to execution mode and streams a request for the agent to implement the plan it just
+    /// produced.
     private void implementPlan() {
         agentService.activateExecutionAfterPlan();
         messages.add(new Message(MessageType.SYSTEM, "Switched to EXECUTE MODE — implementing the plan..."));
         startStreaming("Implement every step of the plan you just described. Use all necessary tools to actually modify files, run commands, and make all required changes. Do not restate the plan — execute it now.");
     }
 
+    /// Accumulates a streamed token, splitting completed lines out of the buffer so they render as
+    /// finished lines while the trailing partial line renders with a cursor.
+    ///
+    /// @param token the next streamed content token
     private void handleStreamingToken(final String token) {
         streamingLineBuffer.append(token);
         final var content = streamingLineBuffer.toString();
@@ -382,6 +458,8 @@ public class TerminalUi extends ToolkitApp {
         currentStreamingLine = streamingLineBuffer.toString();
     }
 
+    /// Finalizes a completed turn: flushes remaining output into the conversation, ends streaming,
+    /// and — when in plan mode — marks the plan ready for the user to approve implementation.
     private void finalizeStreaming() {
         disposeToolEventSubscription();
         if (!streamingLineBuffer.isEmpty()) {
@@ -400,6 +478,10 @@ public class TerminalUi extends ToolkitApp {
         }
     }
 
+    /// Handles a streaming failure by showing the extracted error detail and resetting streaming
+    /// state.
+    ///
+    /// @param error the error that terminated the stream
     private void handleStreamingError(final Throwable error) {
         disposeToolEventSubscription();
         final var detail = extractErrorDetail(error);
@@ -410,6 +492,11 @@ public class TerminalUi extends ToolkitApp {
         streaming = false;
     }
 
+    /// Extracts a human-readable detail from an error, preferring the status and body of a web-client
+    /// response exception found anywhere in the cause chain.
+    ///
+    /// @param error the error to inspect
+    /// @return a message describing the error
     private String extractErrorDetail(final Throwable error) {
         var cause = error;
         while (cause != null) {
@@ -421,6 +508,7 @@ public class TerminalUi extends ToolkitApp {
         return error.getMessage();
     }
 
+    /// Toggles plan mode and announces the new mode as a system message.
     private void togglePlanMode() {
         planReady = false;
         final var newMode = agentService.togglePlanMode();
@@ -430,6 +518,8 @@ public class TerminalUi extends ToolkitApp {
         messages.add(new Message(MessageType.SYSTEM, modeMessage));
     }
 
+    /// Clears the conversation: denies any pending approval, disposes subscriptions, clears agent
+    /// memory and all UI state, and resets input-history navigation.
     private void clearConversation() {
         denyPendingApproval();
         disposeToolEventSubscription();
@@ -443,6 +533,7 @@ public class TerminalUi extends ToolkitApp {
         inputHistory.resetNavigation();
     }
 
+    /// Disposes the tool-event subscription if it is active.
     private void disposeToolEventSubscription() {
         if (toolEventSubscription != null && !toolEventSubscription.isDisposed()) {
             toolEventSubscription.dispose();

@@ -7,12 +7,10 @@ import org.springframework.stereotype.Component;
 
 import java.util.regex.Pattern;
 
-/**
- * Gates destructive {@code rm} shell commands behind explicit user approval. Intercepts the
- * shell tool before execution and, when the command deletes files, blocks until the user
- * approves through {@link CommandApprovalService}. A denied command is never executed; the tool
- * returns a message telling the model to stop instead.
- */
+/// Gates destructive `rm` shell commands behind explicit user approval. Intercepts the
+/// shell tool before execution and, when the command deletes files, blocks until the user
+/// approves through [CommandApprovalService]. A denied command is never executed; the tool
+/// returns a message telling the model to stop instead.
 @Aspect
 @Component
 public class CommandApprovalAspect {
@@ -22,10 +20,20 @@ public class CommandApprovalAspect {
             "(?:^|[;&|\\n])\\s*rm\\b|(?:-exec|xargs)\\b[^\\n;]*\\brm\\b");
     private final CommandApprovalService approvalService;
 
+    /// Creates the aspect.
+    ///
+    /// @param approvalService the service used to request user approval
     public CommandApprovalAspect(final CommandApprovalService approvalService) {
         this.approvalService = approvalService;
     }
 
+    /// Intercepts a shell command; if it is a destructive `rm`, requires user approval before
+    /// proceeding, and short-circuits with a denial message when the user refuses.
+    ///
+    /// @param joinPoint the intercepted shell-tool invocation
+    /// @param command the shell command being run (the tool's first argument)
+    /// @return the tool's result, or a denial message when the user refuses a destructive command
+    /// @throws Throwable whatever the underlying shell tool throws
     @Around("execution(public String org.springaicommunity.agent.tools.ShellTools.bash(..)) && args(command, ..)")
     public Object gateShellCommand(final ProceedingJoinPoint joinPoint, final String command) throws Throwable {
         if (command != null && DESTRUCTIVE_RM.matcher(command).find() && !approvalService.requestApproval(command)) {

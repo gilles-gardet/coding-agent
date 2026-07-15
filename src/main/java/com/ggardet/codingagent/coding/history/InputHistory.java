@@ -10,6 +10,9 @@ import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
 
+/// Persistent, navigable history of submitted user inputs. Entries are loaded from and appended to
+/// a file under the user's home directory, and can be browsed with up/down navigation that
+/// preserves the in-progress draft.
 @Component
 public class InputHistory {
     private static final Path HISTORY_FILE = Paths.get(System.getProperty("user.home"), ".coding-agent", "history");
@@ -17,10 +20,15 @@ public class InputHistory {
     private int navigationIndex = -1;
     private String savedDraft = "";
 
+    /// Creates the history and loads any previously persisted entries.
     public InputHistory() {
         loadFromFile();
     }
 
+    /// Adds a message to the history and persists it, unless it is blank or identical to the most
+    /// recent entry. Resets navigation to the newest position.
+    ///
+    /// @param message the submitted input to record
     public void add(final String message) {
         if (message.isBlank()) {
             return;
@@ -34,10 +42,11 @@ public class InputHistory {
         appendToFile(message);
     }
 
-    /**
-     * Navigates to the previous (older) history entry.
-     * Saves the current draft on first navigation so it can be restored.
-     */
+    /// Navigates to the previous (older) history entry. Saves the current draft on first navigation
+    /// so it can be restored later.
+    ///
+    /// @param currentDraft the current input text, saved on the first navigation step
+    /// @return the older history entry, or the draft when there is no history
     public String navigateUp(final String currentDraft) {
         if (entries.isEmpty()) {
             return currentDraft;
@@ -51,9 +60,10 @@ public class InputHistory {
         return entries.get(navigationIndex);
     }
 
-    /**
-     * Navigates to the next (more recent) history entry, or restores the draft.
-     */
+    /// Navigates to the next (more recent) history entry, or restores the saved draft once past the
+    /// newest entry.
+    ///
+    /// @return the newer history entry, the restored draft, or an empty string when not navigating
     public String navigateDown() {
         if (navigationIndex == -1) {
             return "";
@@ -66,11 +76,14 @@ public class InputHistory {
         return savedDraft;
     }
 
+    /// Resets navigation state and discards any saved draft.
     public void resetNavigation() {
         navigationIndex = -1;
         savedDraft = "";
     }
 
+    /// Loads previously persisted history entries from the history file, ignoring blank lines and
+    /// silently tolerating read errors.
     private void loadFromFile() {
         if (!Files.exists(HISTORY_FILE)) {
             return;
@@ -83,6 +96,10 @@ public class InputHistory {
         }
     }
 
+    /// Appends a single entry to the history file, creating the parent directory if needed and
+    /// silently tolerating write errors.
+    ///
+    /// @param message the entry to append
     private void appendToFile(final String message) {
         try {
             Files.createDirectories(HISTORY_FILE.getParent());

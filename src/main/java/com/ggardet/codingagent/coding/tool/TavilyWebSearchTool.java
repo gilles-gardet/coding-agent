@@ -18,6 +18,8 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
+/// A web-search tool backed by the [Tavily](https://tavily.com) API. Exposed to the model as the
+/// `WebSearch` tool, it runs a query with optional domain filters and returns the results as JSON.
 public class TavilyWebSearchTool {
     private final RestClient restClient;
     private final String apiKey;
@@ -27,6 +29,11 @@ public class TavilyWebSearchTool {
     private static final String TAVILY_API_BASE_URL = "https://api.tavily.com";
     private static final String SEARCH_PATH = "/search";
 
+    /// Creates the tool.
+    ///
+    /// @param apiKey the Tavily API key; must not be blank
+    /// @param maxResults the maximum number of results to request per search
+    /// @throws IllegalArgumentException if the API key is null or empty
     public TavilyWebSearchTool(final String apiKey, final int maxResults) {
         Assert.hasText(apiKey, "API key must not be null or empty");
         this.apiKey = apiKey;
@@ -38,6 +45,13 @@ public class TavilyWebSearchTool {
                 .build();
     }
 
+    /// Runs a web search and returns the results serialized as JSON. Returns an empty JSON list on
+    /// a blank query or any API error rather than throwing.
+    ///
+    /// @param query the search query
+    /// @param includeDomains domains to restrict results to, or `null`/empty for no restriction
+    /// @param excludeDomains domains to exclude from results, or `null`/empty for none
+    /// @return a JSON array of search results (title, url, description), possibly empty
     @Tool(name = "WebSearch", description = """
         - Allows Claude to search the web and use the results to inform responses
         - Provides up-to-date information for current events and recent data
@@ -86,6 +100,12 @@ public class TavilyWebSearchTool {
         }
     }
 
+    /// Builds the Tavily request payload from the query, result cap, and optional domain filters.
+    ///
+    /// @param query the search query
+    /// @param includeDomains domains to include, or `null`/empty to omit the filter
+    /// @param excludeDomains domains to exclude, or `null`/empty to omit the filter
+    /// @return the request body as a map ready to be serialized
     private Map<String, Object> buildRequestBody(
             final String query,
             final List<String> includeDomains,
@@ -103,6 +123,11 @@ public class TavilyWebSearchTool {
         return body;
     }
 
+    /// Executes the search POST request against the Tavily API, logging client/server errors and
+    /// returning an empty map on any failure rather than throwing.
+    ///
+    /// @param requestBody the request payload
+    /// @return the decoded response map, or an empty map on error
     @SuppressWarnings("unchecked")
     private Map<String, Object> executeSearch(final Map<String, Object> requestBody) {
         try {
@@ -122,6 +147,10 @@ public class TavilyWebSearchTool {
         }
     }
 
+    /// Extracts the well-formed entries (those with a title and url) from the API response.
+    ///
+    /// @param response the decoded API response map
+    /// @return the parsed search results, possibly empty
     @SuppressWarnings("unchecked")
     private List<SearchResult> parseResults(final Map<String, Object> response) {
         final var rawResults = (List<Map<String, Object>>) response.get("results");
@@ -137,16 +166,30 @@ public class TavilyWebSearchTool {
                 .toList();
     }
 
+    /// A single web-search result.
+    ///
+    /// @param title the result title
+    /// @param url the result URL
+    /// @param description a short content snippet, possibly empty
     public record SearchResult(String title, String url, String description) {
     }
 
+    /// Creates a builder for the tool.
+    ///
+    /// @param apiKey the Tavily API key
+    /// @return a new builder
     public static Builder builder(final String apiKey) {
         return new Builder(apiKey);
     }
 
+    /// Builder for [TavilyWebSearchTool].
     public static class Builder {
         private final String apiKey;
 
+        /// Creates the builder.
+        ///
+        /// @param apiKey the Tavily API key; must not be blank
+        /// @throws IllegalArgumentException if the API key is null or empty
         private Builder(final String apiKey) {
             if (!StringUtils.hasText(apiKey)) {
                 throw new IllegalArgumentException("API key must not be null or empty");
@@ -154,6 +197,9 @@ public class TavilyWebSearchTool {
             this.apiKey = apiKey;
         }
 
+        /// Builds the tool with the default result cap.
+        ///
+        /// @return a new [TavilyWebSearchTool]
         public TavilyWebSearchTool build() {
             final int maxResults = 10;
             return new TavilyWebSearchTool(this.apiKey, maxResults);

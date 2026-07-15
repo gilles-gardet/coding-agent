@@ -10,7 +10,14 @@ import org.springframework.aot.hint.MemberCategory;
 import org.springframework.aot.hint.RuntimeHints;
 import org.springframework.aot.hint.RuntimeHintsRegistrar;
 
+/// Registers the reflection and resource hints the GraalVM native image needs: reflective access
+/// to the tool classes whose `@Tool` methods are discovered at runtime, and the classpath
+/// resources (tamboui key bindings, bundled skills, and prompt templates) read from disk.
 public class NativeRuntimeHints implements RuntimeHintsRegistrar {
+    /// Registers all reflection and resource hints required for native execution.
+    ///
+    /// @param hints the runtime hints registry to contribute to
+    /// @param classLoader the class loader used to resolve types (unused)
     @Override
     public void registerHints(final RuntimeHints hints, final ClassLoader classLoader) {
         hints.reflection()

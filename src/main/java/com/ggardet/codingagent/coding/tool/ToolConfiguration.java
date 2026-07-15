@@ -21,28 +21,46 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.ClassPathResource;
 
+/// Declares the tool beans exposed to the model — file system, search, shell, web search, skills,
+/// and todo tools — and assembles them into the [ToolCallback] array wired into the chat client.
 @Configuration
 public class ToolConfiguration {
+    /// Provides the file read/write tool.
+    ///
+    /// @return the file system tool
     @Bean
     public FileSystemTools fileSystemTools() {
         return FileSystemTools.builder().build();
     }
 
+    /// Provides the regex content-search tool.
+    ///
+    /// @return the grep tool
     @Bean
     public GrepTool grepTool() {
         return GrepTool.builder().build();
     }
 
+    /// Provides the filename glob tool.
+    ///
+    /// @return the glob tool
     @Bean
     public GlobTool globTool() {
         return GlobTool.builder().build();
     }
 
+    /// Provides the shell-command execution tool.
+    ///
+    /// @return the shell tool
     @Bean
     public ShellTools shellTools() {
         return ShellTools.builder().build();
     }
 
+    /// Provides the Tavily web-search tool.
+    ///
+    /// @param tavilyApiKey the Tavily API key resolved from the environment
+    /// @return the web-search tool
     @Bean
     public TavilyWebSearchTool tavilyWebSearchTool(final @Value("${TAVILY_API_KEY}") String tavilyApiKey) {
         return TavilyWebSearchTool.builder(tavilyApiKey).build();
@@ -52,12 +70,10 @@ public class ToolConfiguration {
     private static final List<String> BUNDLED_SKILLS = List.of(
             "git", "tdd", "fd", "grep", "ls", "cat", "mv", "cp", "rm");
 
-    /**
-     * Loads skills from an on-disk directory rather than scanning the classpath. Classpath
-     * wildcard scanning ({@code classpath*:.../**}{@code /SKILL.md}) returns nothing in a
-     * GraalVM native image, which makes {@code SkillsTool.build()} fail its non-empty
-     * assertion. Bundled skills are seeded to the directory on first run.
-     */
+    /// Loads skills from an on-disk directory rather than scanning the classpath. Classpath
+    /// wildcard scanning (`classpath*:.../**/SKILL.md`) returns nothing in a GraalVM native
+    /// image, which makes `SkillsTool.build()` fail its non-empty assertion. Bundled skills
+    /// are seeded to the directory on first run.
     @Bean
     public ToolCallback skillsTool() {
         final var skillsDirectory = Path.of(System.getProperty("user.home"), ".agent", "skills");
@@ -67,6 +83,11 @@ public class ToolConfiguration {
                 .build();
     }
 
+    /// Copies each bundled skill's `SKILL.md` from the classpath into the on-disk skills directory
+    /// when it is not already present, so the tool has skills to load on a first run.
+    ///
+    /// @param skillsDirectory the root directory skills are seeded into
+    /// @throws IllegalStateException if a bundled skill cannot be read or written
     private void seedBundledSkills(final Path skillsDirectory) {
         for (final var skill : BUNDLED_SKILLS) {
             final var target = skillsDirectory.resolve(skill).resolve("SKILL.md");
@@ -84,6 +105,10 @@ public class ToolConfiguration {
         }
     }
 
+    /// Provides the todo-list tool, forwarding each update to the UI as a formatted event.
+    ///
+    /// @param toolEventSink the sink todo updates are published to
+    /// @return the todo-write tool
     @Bean
     public TodoWriteTool todoWriteTool(final ToolEventSink toolEventSink) {
         return TodoWriteTool.builder()
@@ -91,6 +116,16 @@ public class ToolConfiguration {
                 .build();
     }
 
+    /// Aggregates the individual tools into the array of tool callbacks exposed to the model.
+    ///
+    /// @param fileSystemTools the file read/write tool
+    /// @param grepTool the content-search tool
+    /// @param globTool the filename glob tool
+    /// @param shellTools the shell-command tool
+    /// @param tavilyWebSearchTool the web-search tool
+    /// @param skillsTool the skills tool callback
+    /// @param todoWriteTool the todo-list tool
+    /// @return the combined array of tool callbacks
     @Bean
     public ToolCallback[] agentTools(
             final FileSystemTools fileSystemTools,
@@ -117,6 +152,10 @@ public class ToolConfiguration {
                 .toArray(ToolCallback[]::new);
     }
 
+    /// Formats a todo list into a multi-line, icon-prefixed string for display in the UI.
+    ///
+    /// @param todos the current todo list
+    /// @return the formatted task-plan text
     private static String formatTodos(final TodoWriteTool.Todos todos) {
         final var sb = new StringBuilder("📋 Task Plan:");
         for (final var todo : todos.todos()) {

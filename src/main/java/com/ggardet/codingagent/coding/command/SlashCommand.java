@@ -4,11 +4,9 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
-/**
- * Slash commands typed in the input as {@code /name [args]}. Prompt-backed commands expand
- * into an instruction sent to the agent; local commands (with a {@code null} template) are
- * handled directly by the UI.
- */
+/// Slash commands typed in the input as `/name [args]`. Prompt-backed commands expand
+/// into an instruction sent to the agent; local commands (with a `null` template) are
+/// handled directly by the UI.
 public enum SlashCommand {
     REVIEW("review", "Review current code changes for bugs and improvements", """
             Review the current code changes. First run `git status` and `git diff` to see what changed, \
@@ -33,25 +31,38 @@ public enum SlashCommand {
     private final String description;
     private final String promptTemplate;
 
+    /// Defines a slash command.
+    ///
+    /// @param commandName the command name typed after the leading slash
+    /// @param description the one-line description shown in autocompletion and help
+    /// @param promptTemplate the prompt template with a `{args}` placeholder, or `null` for a
+    ///        command handled locally by the UI
     SlashCommand(final String commandName, final String description, final String promptTemplate) {
         this.commandName = commandName;
         this.description = description;
         this.promptTemplate = promptTemplate;
     }
 
+    /// Returns the command name (without the leading slash).
+    ///
+    /// @return the command name
     public String commandName() {
         return commandName;
     }
 
+    /// Returns the one-line command description.
+    ///
+    /// @return the description
     public String description() {
         return description;
     }
 
-    /**
-     * Expands this command's template with the user-supplied arguments. For {@link #EXPLAIN}
-     * the arguments are the subject to explain; for the other prompt commands they become an
-     * optional additional-focus suffix.
-     */
+    /// Expands this command's template with the user-supplied arguments. For [#EXPLAIN]
+    /// the arguments are the subject to explain; for the other prompt commands they become an
+    /// optional additional-focus suffix.
+    ///
+    /// @param arguments the raw arguments typed after the command, may be `null` or blank
+    /// @return the fully expanded prompt to send to the agent
     public String expand(final String arguments) {
         final var trimmed = arguments == null ? "" : arguments.trim();
         final var slot = switch (this) {
@@ -61,10 +72,18 @@ public enum SlashCommand {
         return promptTemplate.replace("{args}", slot);
     }
 
+    /// Finds the command whose name exactly matches the given value.
+    ///
+    /// @param name the command name to look up
+    /// @return the matching command, or empty if none matches
     public static Optional<SlashCommand> byName(final String name) {
         return Arrays.stream(values()).filter(command -> command.commandName.equals(name)).findFirst();
     }
 
+    /// Returns the commands whose names start with the given prefix, in declaration order.
+    ///
+    /// @param prefix the prefix to match against command names
+    /// @return the matching commands (empty if none)
     public static List<SlashCommand> matching(final String prefix) {
         return Arrays.stream(values()).filter(command -> command.commandName.startsWith(prefix)).toList();
     }
