@@ -2,6 +2,7 @@ package com.ggardet.codingagent.coding.command;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 /// Slash commands typed in the input as `/name [args]`. Prompt-backed commands expand
@@ -64,7 +65,7 @@ public enum SlashCommand {
     /// @param arguments the raw arguments typed after the command, may be `null` or blank
     /// @return the fully expanded prompt to send to the agent
     public String expand(final String arguments) {
-        final var trimmed = arguments == null ? "" : arguments.trim();
+        final var trimmed = Objects.requireNonNullElse(arguments, "").trim();
         final var slot = switch (this) {
             case EXPLAIN -> trimmed;
             default -> trimmed.isEmpty() ? "" : " Additional focus: " + trimmed;

@@ -5,6 +5,7 @@ import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
 import org.springframework.stereotype.Component;
 
+import java.util.Objects;
 import java.util.regex.Pattern;
 
 /// Gates destructive `rm` shell commands behind explicit user approval. Intercepts the
@@ -36,7 +37,7 @@ public class CommandApprovalAspect {
     /// @throws Throwable whatever the underlying shell tool throws
     @Around("execution(public String org.springaicommunity.agent.tools.ShellTools.bash(..)) && args(command, ..)")
     public Object gateShellCommand(final ProceedingJoinPoint joinPoint, final String command) throws Throwable {
-        if (command != null && DESTRUCTIVE_RM.matcher(command).find() && !approvalService.requestApproval(command)) {
+        if (Objects.nonNull(command) && DESTRUCTIVE_RM.matcher(command).find() && !approvalService.requestApproval(command)) {
             return "Command denied by the user. Do not retry it; ask the user how to proceed.";
         }
         return joinPoint.proceed();

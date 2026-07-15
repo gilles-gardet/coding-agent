@@ -3,6 +3,7 @@ package com.ggardet.codingagent.coding.tool;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -140,7 +141,7 @@ public class TavilyWebSearchTool {
                     .onStatus(HttpStatusCode::is5xxServerError, (_, errorResponse) ->
                             logger.error("Server error from Tavily API: {}", errorResponse.getStatusCode()))
                     .body(Map.class);
-            return response != null ? response : Collections.emptyMap();
+            return Objects.requireNonNullElseGet(response, Collections::emptyMap);
         } catch (final Exception exception) {
             logger.error("Failed to execute Tavily search request", exception);
             return Collections.emptyMap();
@@ -158,11 +159,12 @@ public class TavilyWebSearchTool {
             return Collections.emptyList();
         }
         return rawResults.stream()
-                .filter(entry -> entry != null && entry.get("title") != null && entry.get("url") != null)
+                .filter(Objects::nonNull)
+                .filter(entry -> Objects.nonNull(entry.get("title")) && Objects.nonNull(entry.get("url")))
                 .map(entry -> new SearchResult(
                         (String) entry.get("title"),
                         (String) entry.get("url"),
-                        entry.get("content") != null ? (String) entry.get("content") : ""))
+                        Objects.requireNonNullElse((String) entry.get("content"), "")))
                 .toList();
     }
 

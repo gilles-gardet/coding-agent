@@ -24,6 +24,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -171,14 +172,14 @@ public class TerminalUi extends ToolkitApp {
             }
         }
         final var approval = pendingApproval;
-        if (approval != null) {
+        if (Objects.nonNull(approval)) {
             bottomChildren.add(text("⚠ Approve destructive command?  [y] run   [n] deny").yellow().bold());
             bottomChildren.add(text("  " + approval.command()).dim());
         }
         bottomChildren.add(activeInput);
         bottomChildren.add(row(hintsText, modeLabel));
         final var bottom = panel(column(bottomChildren.toArray(Element[]::new)).spacing(0)).borderless();
-        final var extraLines = suggestions.size() + (approval != null ? 2 : 0);
+        final var extraLines = suggestions.size() + (Objects.nonNull(approval) ? 2 : 0);
         return dock()
                 .center(historyList.displayOnly().stickyScroll().scrollbar())
                 .bottom(bottom, length(BOTTOM_HEIGHT + extraLines))
@@ -197,7 +198,7 @@ public class TerminalUi extends ToolkitApp {
                     }
                     ctrlCPressedOnce = false;
                     final var approvalRequest = pendingApproval;
-                    if (approvalRequest != null) {
+                    if (Objects.nonNull(approvalRequest)) {
                         if (event.isChar('y') || event.isChar('Y')) {
                             resolveApproval(approvalRequest, true);
                         } else if (event.isChar('n') || event.isChar('N')
@@ -394,7 +395,7 @@ public class TerminalUi extends ToolkitApp {
     /// the partial output, and marks the turn cancelled.
     private void cancelStreaming() {
         denyPendingApproval();
-        if (streamSubscription != null && !streamSubscription.isDisposed()) {
+        if (Objects.nonNull(streamSubscription) && !streamSubscription.isDisposed()) {
             streamSubscription.dispose();
         }
         disposeToolEventSubscription();
@@ -426,7 +427,7 @@ public class TerminalUi extends ToolkitApp {
     /// tool thread is released.
     private void denyPendingApproval() {
         final var approval = pendingApproval;
-        if (approval != null) {
+        if (Objects.nonNull(approval)) {
             pendingApproval = null;
             approval.decision().complete(false);
         }
@@ -499,7 +500,7 @@ public class TerminalUi extends ToolkitApp {
     /// @return a message describing the error
     private String extractErrorDetail(final Throwable error) {
         var cause = error;
-        while (cause != null) {
+        while (Objects.nonNull(cause)) {
             if (cause instanceof org.springframework.web.reactive.function.client.WebClientResponseException webEx) {
                 return webEx.getStatusCode() + " — " + webEx.getResponseBodyAsString();
             }
@@ -535,7 +536,7 @@ public class TerminalUi extends ToolkitApp {
 
     /// Disposes the tool-event subscription if it is active.
     private void disposeToolEventSubscription() {
-        if (toolEventSubscription != null && !toolEventSubscription.isDisposed()) {
+        if (Objects.nonNull(toolEventSubscription) && !toolEventSubscription.isDisposed()) {
             toolEventSubscription.dispose();
         }
     }
