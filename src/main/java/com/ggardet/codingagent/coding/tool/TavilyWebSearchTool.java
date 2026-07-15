@@ -1,4 +1,4 @@
-package com.ggardet.codingagent.tools;
+package com.ggardet.codingagent.coding.tool;
 
 import java.util.Collections;
 import java.util.List;

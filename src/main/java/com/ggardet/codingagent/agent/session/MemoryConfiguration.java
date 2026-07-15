@@ -1,4 +1,4 @@
-package com.ggardet.codingagent.config;
+package com.ggardet.codingagent.agent.session;
 
 import org.springaicommunity.agent.advisors.AutoMemoryToolsAdvisor;
 import org.springframework.ai.chat.client.ChatClient;
@@ -12,12 +12,10 @@ import org.springframework.ai.session.compaction.TurnCountTrigger;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import java.nio.file.Path;
+
 @Configuration
 public class MemoryConfiguration {
-    private static final String MEMORY_DIR_MAC = "/Users/gilles/.agent/memories";
-    private static final String MEMORY_DIR_LINUX = "/home/gilles/.agent/memories";
-    private static final String OS_NAME_LINUX = "Linux";
-    private static final String OS_NAME = "os.name";
     private static final String DEFAULT_USER_ID = "gilles";
 
     @Bean
@@ -47,10 +45,7 @@ public class MemoryConfiguration {
 
     @Bean
     public AutoMemoryToolsAdvisor autoMemoryToolsAdvisor() {
-        final var osName = System.getProperty(OS_NAME);
-        final var memoriesRootDirectory = osName.contains(OS_NAME_LINUX) ?
-                MEMORY_DIR_LINUX :
-                MEMORY_DIR_MAC;
+        final var memoriesRootDirectory = Path.of(System.getProperty("user.home"), ".agent", "memories").toString();
         return AutoMemoryToolsAdvisor.builder()
                 .memoriesRootDirectory(memoriesRootDirectory)
                 .memoryConsolidationTrigger((_, _) -> Math.random() < 0.05)

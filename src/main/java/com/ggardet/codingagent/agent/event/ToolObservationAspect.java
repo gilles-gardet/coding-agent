@@ -1,4 +1,4 @@
-package com.ggardet.codingagent.logging;
+package com.ggardet.codingagent.agent.event;
 
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;

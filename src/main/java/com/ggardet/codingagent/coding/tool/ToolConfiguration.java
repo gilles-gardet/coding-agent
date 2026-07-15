@@ -1,10 +1,13 @@
-package com.ggardet.codingagent.config;
+package com.ggardet.codingagent.coding.tool;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.List;
 import java.util.stream.Stream;
 
-import com.ggardet.codingagent.logging.ToolEventSink;
-import com.ggardet.codingagent.tools.TavilyWebSearchTool;
+import com.ggardet.codingagent.agent.event.ToolEventSink;
 import org.springaicommunity.agent.tools.FileSystemTools;
 import org.springaicommunity.agent.tools.GlobTool;
 import org.springaicommunity.agent.tools.GrepTool;
@@ -47,12 +50,40 @@ public class ToolConfiguration {
         return TavilyWebSearchTool.builder(tavilyApiKey).build();
     }
 
+    // ponytail: add an entry here when shipping a new default skill in resources/.agent/skills
+    private static final List<String> BUNDLED_SKILLS = List.of(
+            "git", "tdd", "fd", "grep", "ls", "cat", "mv", "cp", "rm");
+
+    /**
+     * Loads skills from an on-disk directory rather than scanning the classpath. Classpath
+     * wildcard scanning ({@code classpath*:.../**}{@code /SKILL.md}) returns nothing in a
+     * GraalVM native image, which makes {@code SkillsTool.build()} fail its non-empty
+     * assertion. Bundled skills are seeded to the directory on first run.
+     */
     @Bean
     public ToolCallback skillsTool() {
+        final var skillsDirectory = Path.of(System.getProperty("user.home"), ".agent", "skills");
+        seedBundledSkills(skillsDirectory);
         return SkillsTool.builder()
-                .addSkillsResource(new ClassPathResource(".agent/skills"))
-                .addSkillsResource(new ClassPathResource("META-INF/skills"))
+                .addSkillsDirectory(skillsDirectory.toString())
                 .build();
+    }
+
+    private void seedBundledSkills(final Path skillsDirectory) {
+        for (final var skill : BUNDLED_SKILLS) {
+            final var target = skillsDirectory.resolve(skill).resolve("SKILL.md");
+            if (Files.exists(target)) {
+                continue;
+            }
+            try {
+                Files.createDirectories(target.getParent());
+                try (final var input = new ClassPathResource(".agent/skills/" + skill + "/SKILL.md").getInputStream()) {
+                    Files.copy(input, target);
+                }
+            } catch (final IOException exception) {
+                throw new IllegalStateException("Failed to seed bundled skill: " + skill, exception);
+            }
+        }
     }
 
     @Bean

@@ -1,8 +1,9 @@
-package com.ggardet.codingagent.view;
+package com.ggardet.codingagent.coding.tui;
 
-import com.ggardet.codingagent.history.InputHistory;
-import com.ggardet.codingagent.logging.ToolEventSink;
-import com.ggardet.codingagent.service.AgentService;
+import com.ggardet.codingagent.coding.command.SlashCommand;
+import com.ggardet.codingagent.coding.history.InputHistory;
+import com.ggardet.codingagent.agent.event.ToolEventSink;
+import com.ggardet.codingagent.agent.AgentService;
 import reactor.core.Disposable;
 import dev.tamboui.style.Overflow;
 import dev.tamboui.toolkit.app.ToolkitApp;
@@ -18,10 +19,13 @@ import dev.tamboui.widgets.input.TextInputState;
 import dev.tamboui.widgets.spinner.SpinnerStyle;
 import org.springframework.stereotype.Component;
 
+import dev.tamboui.toolkit.element.Element;
+
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import static dev.tamboui.toolkit.Toolkit.column;
@@ -48,13 +52,16 @@ public class TerminalUi extends ToolkitApp {
     private final SpinnerElement loadingSpinner = spinner(SpinnerStyle.DOTS, "Thinking...");
     private volatile String currentStreamingLine = "";
     private volatile boolean streaming = false;
+    private volatile boolean planReady = false;
+    private volatile int selectedSuggestion = 0;
     private volatile boolean ctrlCPressedOnce = false;
     private volatile long ctrlCFirstPressTime = 0;
     private volatile Disposable toolEventSubscription;
+    private volatile Disposable streamSubscription;
     private final TextInputElement inputField;
 
     private static final int BOTTOM_HEIGHT = 6;
-    private static final String HINTS = " Enter: send  Ctrl+C: clear/quit  Ctrl+L: clear  Ctrl+P: toggle plan mode";
+    private static final String HINTS = " Enter: send  /: commands  Esc: cancel  Ctrl+C: quit  Ctrl+L: clear  Ctrl+P: plan";
 
     public TerminalUi(final AgentService agentService, final ToolEventSink toolEventSink, final InputHistory inputHistory) {
         this.agentService = agentService;
@@ -66,6 +73,20 @@ public class TerminalUi extends ToolkitApp {
                 .rounded()
                 .onSubmit(this::sendMessage)
                 .onKeyEvent(event -> {
+                    final var suggestions = currentSuggestions();
+                    if (!suggestions.isEmpty() && !event.hasCtrl() && !event.hasAlt()) {
+                        if (event.code() == KeyCode.UP) {
+                            selectedSuggestion = Math.floorMod(selectedSuggestion - 1, suggestions.size());
+                            return EventResult.HANDLED;
+                        }
+                        if (event.code() == KeyCode.DOWN) {
+                            selectedSuggestion = Math.floorMod(selectedSuggestion + 1, suggestions.size());
+                            return EventResult.HANDLED;
+                        }
+                        if (event.code() == KeyCode.TAB) {
+                            return completeSuggestion(suggestions);
+                        }
+                    }
                     if (event.code() == KeyCode.UP && !event.hasCtrl() && !event.hasAlt()) {
                         return navigateHistoryUp();
                     }
@@ -113,12 +134,22 @@ public class TerminalUi extends ToolkitApp {
         final var activeInput = streaming ? loadingSpinner : inputField;
         final var modeLabel = agentService.isPlanMode() ? text(" [PLAN MODE]").yellow() : text(" [EXECUTE MODE]").green();
         final var hintsText = text(HINTS).dim();
-        final var bottom = panel(
-                column(activeInput, row(hintsText, modeLabel)).spacing(0)
-        ).borderless();
+        final var suggestions = currentSuggestions();
+        final var bottomChildren = new ArrayList<Element>();
+        if (!suggestions.isEmpty()) {
+            final var selected = Math.min(selectedSuggestion, suggestions.size() - 1);
+            for (var index = 0; index < suggestions.size(); index++) {
+                final var command = suggestions.get(index);
+                final var line = text("  /" + command.commandName() + "  " + command.description());
+                bottomChildren.add(index == selected ? line.cyan().bold() : line.dim());
+            }
+        }
+        bottomChildren.add(activeInput);
+        bottomChildren.add(row(hintsText, modeLabel));
+        final var bottom = panel(column(bottomChildren.toArray(Element[]::new)).spacing(0)).borderless();
         return dock()
                 .center(historyList.displayOnly().stickyScroll().scrollbar())
-                .bottom(bottom, length(BOTTOM_HEIGHT))
+                .bottom(bottom, length(BOTTOM_HEIGHT + suggestions.size()))
                 .focusable()
                 .onKeyEvent(event -> {
                     if (event.hasCtrl() && event.isChar('c')) {
@@ -133,12 +164,21 @@ public class TerminalUi extends ToolkitApp {
                         return EventResult.HANDLED;
                     }
                     ctrlCPressedOnce = false;
+                    if (event.code() == KeyCode.ESCAPE && streaming) {
+                        cancelStreaming();
+                        return EventResult.HANDLED;
+                    }
                     if (event.hasCtrl() && event.isChar('l')) {
                         clearConversation();
                         return EventResult.HANDLED;
                     }
                     if (event.hasCtrl() && event.isChar('p')) {
                         togglePlanMode();
+                        return EventResult.HANDLED;
+                    }
+                    if (event.hasCtrl() && event.isChar('y') && planReady && !streaming) {
+                        planReady = false;
+                        implementPlan();
                         return EventResult.HANDLED;
                     }
                     return historyList.handleKeyEvent(event, false);
@@ -171,10 +211,87 @@ public class TerminalUi extends ToolkitApp {
         if (message.isEmpty() || streaming) {
             return;
         }
+        if (message.startsWith("/")) {
+            handleCommand(message);
+            return;
+        }
         inputState.clear();
         inputHistory.add(message);
+        planReady = false;
         messages.add(new Message(MessageType.USER, message));
         startStreaming(message);
+    }
+
+    private List<SlashCommand> currentSuggestions() {
+        if (streaming) {
+            return List.of();
+        }
+        final var text = inputState.text();
+        if (!text.startsWith("/") || text.contains(" ")) {
+            return List.of();
+        }
+        return SlashCommand.matching(text.substring(1).toLowerCase());
+    }
+
+    private EventResult completeSuggestion(final List<SlashCommand> suggestions) {
+        final var index = Math.min(selectedSuggestion, suggestions.size() - 1);
+        inputState.setText("/" + suggestions.get(index).commandName() + " ");
+        inputState.moveCursorToEnd();
+        return EventResult.HANDLED;
+    }
+
+    private void handleCommand(final String rawInput) {
+        final var withoutSlash = rawInput.substring(1);
+        final var spaceIndex = withoutSlash.indexOf(' ');
+        final var name = (spaceIndex < 0 ? withoutSlash : withoutSlash.substring(0, spaceIndex)).toLowerCase();
+        final var arguments = spaceIndex < 0 ? "" : withoutSlash.substring(spaceIndex + 1);
+        inputState.clear();
+        inputHistory.add(rawInput);
+        if (name.isEmpty()) {
+            showHelp();
+            return;
+        }
+        final var resolved = resolveCommand(name);
+        if (resolved.isEmpty()) {
+            messages.add(new Message(MessageType.SYSTEM, "Unknown command: /" + name + " — type / to see available commands"));
+            return;
+        }
+        executeCommand(resolved.get(), arguments);
+    }
+
+    private Optional<SlashCommand> resolveCommand(final String name) {
+        final var exact = SlashCommand.byName(name);
+        if (exact.isPresent()) {
+            return exact;
+        }
+        final var matches = SlashCommand.matching(name);
+        if (matches.isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.of(matches.get(Math.min(selectedSuggestion, matches.size() - 1)));
+    }
+
+    private void executeCommand(final SlashCommand command, final String arguments) {
+        selectedSuggestion = 0;
+        switch (command) {
+            case PLAN -> togglePlanMode();
+            case CLEAR -> clearConversation();
+            case HELP -> showHelp();
+            default -> {
+                planReady = false;
+                final var label = "/" + command.commandName() + (arguments.isBlank() ? "" : " " + arguments.trim());
+                messages.add(new Message(MessageType.USER, label));
+                startStreaming(command.expand(arguments));
+            }
+        }
+    }
+
+    private void showHelp() {
+        final var help = new StringBuilder("Available commands:");
+        for (final var command : SlashCommand.values()) {
+            help.append("\n  /").append(command.commandName()).append("  —  ").append(command.description());
+        }
+        messages.add(new Message(MessageType.SYSTEM, help.toString()));
     }
 
     private void startStreaming(final String message) {
@@ -184,11 +301,29 @@ public class TerminalUi extends ToolkitApp {
         currentStreamingLine = "";
         toolEventSubscription = toolEventSink.events()
                 .subscribe(event -> messages.add(new Message(MessageType.SYSTEM, event)));
-        agentService.streamChat(message)
+        streamSubscription = agentService.streamChat(message)
                 .doOnNext(this::handleStreamingToken)
                 .doOnComplete(this::finalizeStreaming)
                 .doOnError(this::handleStreamingError)
                 .subscribe();
+    }
+
+    private void cancelStreaming() {
+        if (streamSubscription != null && !streamSubscription.isDisposed()) {
+            streamSubscription.dispose();
+        }
+        disposeToolEventSubscription();
+        if (!streamingLineBuffer.isEmpty()) {
+            streamingLines.add(streamingLineBuffer.toString());
+        }
+        for (final var line : streamingLines) {
+            messages.add(new Message(MessageType.AGENT, line));
+        }
+        streamingLines.clear();
+        streamingLineBuffer.setLength(0);
+        currentStreamingLine = "";
+        streaming = false;
+        messages.add(new Message(MessageType.SYSTEM, "Cancelled."));
     }
 
     private void implementPlan() {
@@ -224,7 +359,8 @@ public class TerminalUi extends ToolkitApp {
         currentStreamingLine = "";
         streaming = false;
         if (agentService.isPlanMode()) {
-            implementPlan();
+            planReady = true;
+            messages.add(new Message(MessageType.SYSTEM, "Plan ready — press Ctrl+Y to implement, or keep chatting to refine it."));
         }
     }
 
@@ -250,6 +386,7 @@ public class TerminalUi extends ToolkitApp {
     }
 
     private void togglePlanMode() {
+        planReady = false;
         final var newMode = agentService.togglePlanMode();
         final var modeMessage = newMode
                 ? "Switched to PLAN MODE — agent will plan without executing actions"
@@ -265,6 +402,7 @@ public class TerminalUi extends ToolkitApp {
         streamingLineBuffer.setLength(0);
         currentStreamingLine = "";
         streaming = false;
+        planReady = false;
         inputHistory.resetNavigation();
     }
 

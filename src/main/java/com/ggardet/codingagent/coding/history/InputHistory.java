@@ -1,4 +1,4 @@
-package com.ggardet.codingagent.history;
+package com.ggardet.codingagent.coding.history;
 
 import org.springframework.stereotype.Component;
 

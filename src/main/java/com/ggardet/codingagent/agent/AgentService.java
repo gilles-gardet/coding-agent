@@ -1,4 +1,4 @@
-package com.ggardet.codingagent.service;
+package com.ggardet.codingagent.agent;
 
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.memory.ChatMemory;

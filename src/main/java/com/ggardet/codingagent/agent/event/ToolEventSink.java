@@ -1,4 +1,4 @@
-package com.ggardet.codingagent.logging;
+package com.ggardet.codingagent.agent.event;
 
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;

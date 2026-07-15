@@ -1,6 +1,6 @@
-package com.ggardet.codingagent.config;
+package com.ggardet.codingagent.coding.provider;
 
-import com.ggardet.codingagent.advisor.MaxIterationsToolCallAdvisor;
+import com.ggardet.codingagent.agent.loop.MaxIterationsToolCallAdvisor;
 import org.springaicommunity.agent.advisors.AutoMemoryToolsAdvisor;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.session.advisor.SessionMemoryAdvisor;
